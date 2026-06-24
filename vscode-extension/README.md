@@ -31,6 +31,14 @@ OpenAI-compatible APIs can be used for services such as GitHub Models, LM Studio
 4. For API providers, run `AI Commits: Set API Key`.
 5. Run `AI Commits: Generate Commit Message` from the Command Palette or the Source Control title bar.
 
+For the full settings UI, run `AI Commits: Open Settings`. The custom settings page mirrors the IntelliJ plugin layout with:
+
+- Active LLM client selection
+- LLM client table with add, edit, remove, token, and verify actions
+- Locale and diff mode controls
+- Prompt table with add, edit, remove, and preview support
+- Exclusion glob management
+
 Use `AI Commits: Generate Commit Message with Hint` to pass extra context into prompts that include `{hint}` or the conditional hint form:
 
 ```text

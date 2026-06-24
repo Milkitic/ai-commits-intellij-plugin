@@ -88,6 +88,10 @@ export function cleanupGeneratedMessage(message: string, settings: Settings): st
 }
 
 function getPromptTemplate(settings: Settings): string {
+  if (settings.promptContent?.trim()) {
+    return settings.promptContent;
+  }
+
   if (settings.promptPreset === 'custom') {
     return settings.customPrompt.trim() || defaultPrompts.basic.content;
   }

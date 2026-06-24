@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "publisher": "blarc",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Milkitic/ai-commits-intellij-plugin.git",
+    "directory": "vscode-extension"
+  },
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -18,7 +23,8 @@
     "onCommand:aiCommits.previewPrompt",
     "onCommand:aiCommits.setApiKey",
     "onCommand:aiCommits.clearApiKey",
-    "onCommand:aiCommits.selectProvider"
+    "onCommand:aiCommits.selectProvider",
+    "onCommand:aiCommits.openSettings"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -46,6 +52,10 @@
       {
         "command": "aiCommits.selectProvider",
         "title": "AI Commits: Select Provider"
+      },
+      {
+        "command": "aiCommits.openSettings",
+        "title": "AI Commits: Open Settings"
       }
     ],
     "menus": {
@@ -76,6 +86,19 @@
             "claude-code"
           ],
           "description": "LLM provider used to generate commit messages."
+        },
+        "aiCommits.activeClientId": {
+          "type": "string",
+          "default": "",
+          "description": "ID of the active AI Commits LLM client."
+        },
+        "aiCommits.clients": {
+          "type": "array",
+          "default": [],
+          "description": "AI Commits LLM client configurations managed by the custom settings page.",
+          "items": {
+            "type": "object"
+          }
         },
         "aiCommits.model": {
           "type": "string",
@@ -135,6 +158,19 @@
           ],
           "description": "Prompt preset to use."
         },
+        "aiCommits.activePromptId": {
+          "type": "string",
+          "default": "",
+          "description": "ID of the active AI Commits prompt."
+        },
+        "aiCommits.prompts": {
+          "type": "array",
+          "default": [],
+          "description": "AI Commits prompt configurations managed by the custom settings page.",
+          "items": {
+            "type": "object"
+          }
+        },
         "aiCommits.customPrompt": {
           "type": "string",
           "default": "",
@@ -154,6 +190,11 @@
             "workingTree"
           ],
           "description": "Whether to generate from staged changes or all unstaged working tree changes."
+        },
+        "aiCommits.useStreamingResponse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reserved for providers that can stream responses."
         },
         "aiCommits.exclusions": {
           "type": "array",
@@ -193,12 +234,15 @@
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
     "@types/vscode": "^1.92.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.5.4"
   }
 }

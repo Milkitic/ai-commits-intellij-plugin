@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { getSecretKey, getSettings, providerLabels, providers, Provider } from './config';
+import { getClientSecretKey, getSecretKey, getSettings, providerLabels, providers, Provider } from './config';
 import { getBranch, getDiff, getPreviousCommitMessages, pickRepository, RepositoryContext, setCommitInput } from './git';
 import { cleanupGeneratedMessage, constructPrompt } from './prompt';
 import { createProvider } from './llm/providers';
+import { openSettingsPage } from './settingsWebview';
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -11,7 +12,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('aiCommits.previewPrompt', () => previewPrompt()),
     vscode.commands.registerCommand('aiCommits.setApiKey', () => setApiKey(context)),
     vscode.commands.registerCommand('aiCommits.clearApiKey', () => clearApiKey(context)),
-    vscode.commands.registerCommand('aiCommits.selectProvider', () => selectProvider())
+    vscode.commands.registerCommand('aiCommits.selectProvider', () => selectProvider()),
+    vscode.commands.registerCommand('aiCommits.openSettings', () => openSettingsPage(context))
   );
 }
 
@@ -43,7 +45,7 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
 
   try {
     const provider = createProvider(settings.provider);
-    const apiKey = await getApiKey(context, settings.provider);
+    const apiKey = await getApiKey(context, settings.provider, settings.activeClientId);
     const message = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -143,11 +145,19 @@ async function setApiKey(context: vscode.ExtensionContext): Promise<void> {
   }
 
   await context.secrets.store(getSecretKey(provider), apiKey);
+  const activeClientId = getSettings().activeClientId;
+  if (activeClientId) {
+    await context.secrets.store(getClientSecretKey(activeClientId), apiKey);
+  }
   void vscode.window.showInformationMessage(`Saved ${providerLabels[provider]} API key.`);
 }
 
 async function clearApiKey(context: vscode.ExtensionContext): Promise<void> {
   const provider = getSettings().provider;
+  const activeClientId = getSettings().activeClientId;
+  if (activeClientId) {
+    await context.secrets.delete(getClientSecretKey(activeClientId));
+  }
   await context.secrets.delete(getSecretKey(provider));
   void vscode.window.showInformationMessage(`Cleared ${providerLabels[provider]} API key.`);
 }
@@ -174,7 +184,14 @@ async function selectProvider(): Promise<void> {
     .update('provider', picked.provider, vscode.ConfigurationTarget.Global);
 }
 
-async function getApiKey(context: vscode.ExtensionContext, provider: Provider): Promise<string | undefined> {
+async function getApiKey(context: vscode.ExtensionContext, provider: Provider, clientId?: string): Promise<string | undefined> {
+  if (clientId) {
+    const clientSecret = await context.secrets.get(getClientSecretKey(clientId));
+    if (clientSecret) {
+      return clientSecret;
+    }
+  }
+
   const secret = await context.secrets.get(getSecretKey(provider));
   return secret || readApiKeyFromEnvironment(provider);
 }
