@@ -135,12 +135,9 @@ async function sendState(context: vscode.ExtensionContext, webview: vscode.Webvi
     state: toPageState(settings),
     providers,
     providerLabels,
-    defaults: Object.fromEntries(providers.map((provider) => [
+    defaults: Object.fromEntries(providers.map((provider, index) => [
       provider,
-      {
-        model: getDefaultModel(provider),
-        baseUrl: getDefaultBaseUrl(provider)
-      }
+      createDefaultClient(provider, index + 1)
     ])),
     secretStatus
   });
@@ -1015,11 +1012,20 @@ function getHtml(webview: vscode.Webview): string {
     }
 
     function applyProviderDefaults() {
-      const providerDefault = defaults[clientDraftProvider] || {};
+      const providerDefault = providerDefaultClient(clientDraftProvider);
       $('clientBaseUrl').value = providerDefault.baseUrl || '';
       $('clientModel').value = providerDefault.model || '';
+      $('clientTimeout').value = providerDefault.timeoutSeconds;
+      $('clientTemperature').value = providerDefault.temperature;
+      $('clientTopP').value = providerDefault.topP == null ? '' : providerDefault.topP;
+      $('clientTopK').value = providerDefault.topK == null ? '' : providerDefault.topK;
+      $('clientMaxTokens').value = providerDefault.maxTokens;
+      $('clientCliPath').value = providerDefault.cliPath || '';
+      $('clientReasoning').value = providerDefault.codexReasoningEffort || 'medium';
+      $('clientCleanupRegex').value = providerDefault.cleanupRegex || '';
+      $('clientCleanupIgnoreCase').checked = Boolean(providerDefault.cleanupRegexIgnoreCase);
       if (!editingClientId) {
-        $('clientName').value = providerLabels[clientDraftProvider] || clientDraftProvider;
+        $('clientName').value = providerDefault.name || providerLabels[clientDraftProvider] || clientDraftProvider;
       }
     }
 
@@ -1214,13 +1220,31 @@ function getHtml(webview: vscode.Webview): string {
     }
 
     function makeClient(provider) {
-      const providerDefault = defaults[provider] || {};
+      const providerDefault = providerDefaultClient(provider);
       return {
         id: makeId(),
-        name: providerLabels[provider] || provider,
+        name: providerDefault.name || providerLabels[provider] || provider,
         provider,
         model: providerDefault.model || '',
         baseUrl: providerDefault.baseUrl || '',
+        timeoutSeconds: providerDefault.timeoutSeconds == null ? 60 : providerDefault.timeoutSeconds,
+        temperature: providerDefault.temperature == null ? 0.2 : providerDefault.temperature,
+        topP: providerDefault.topP,
+        topK: providerDefault.topK,
+        maxTokens: providerDefault.maxTokens == null ? ${defaultMaxOutputTokens} : providerDefault.maxTokens,
+        cleanupRegex: providerDefault.cleanupRegex || '',
+        cleanupRegexIgnoreCase: Boolean(providerDefault.cleanupRegexIgnoreCase),
+        cliPath: providerDefault.cliPath || '',
+        codexReasoningEffort: providerDefault.codexReasoningEffort || 'medium'
+      };
+    }
+
+    function providerDefaultClient(provider) {
+      return defaults[provider] || {
+        name: providerLabels[provider] || provider,
+        provider,
+        model: '',
+        baseUrl: '',
         timeoutSeconds: 60,
         temperature: 0.2,
         maxTokens: ${defaultMaxOutputTokens},
