@@ -67,6 +67,7 @@ export interface Settings {
   activePromptId: string;
   prompts: PromptConfiguration[];
   useStreamingResponse: boolean;
+  copyToClipboard: boolean;
 }
 
 export const providerLabels: Record<Provider, string> = {
@@ -119,7 +120,8 @@ export function getSettings(): Settings {
     clients,
     activePromptId,
     prompts,
-    useStreamingResponse: config.get<boolean>('useStreamingResponse', false)
+    useStreamingResponse: config.get<boolean>('useStreamingResponse', false),
+    copyToClipboard: config.get<boolean>('copyToClipboard', false)
   };
 }
 

@@ -90,18 +90,35 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
 
     if (isSuspiciouslyShortMessage(message)) {
       void vscode.window.showWarningMessage('AI Commits generated a suspiciously short message even after retrying. The raw result was copied to the clipboard; check Output > AI Commits.');
-      await vscode.env.clipboard.writeText(rawMessage.trim() || message.trim());
+      if (settings.copyToClipboard) {
+        await vscode.env.clipboard.writeText(rawMessage.trim() || message.trim());
+      }
       return;
     }
 
     const writeResult = await setCommitInput(repositoryContext, message);
     if (writeResult.wroteToInput && writeResult.verified) {
-      void vscode.window.showInformationMessage('AI Commits wrote the generated message to Source Control and copied it to the clipboard.');
+      if (settings.copyToClipboard) {
+        await vscode.env.clipboard.writeText(message);
+        void vscode.window.showInformationMessage('AI Commits wrote the generated message to Source Control and copied it to the clipboard.');
+      } else {
+        void vscode.window.showInformationMessage('AI Commits wrote the generated message to Source Control.');
+      }
     } else if (writeResult.wroteToInput) {
       logInputMismatch(message, writeResult.actualValue ?? '');
-      void vscode.window.showWarningMessage('AI Commits generated a message, but VS Code did not keep the full text in Source Control. The full message was copied to the clipboard; check Output > AI Commits.');
+      if (settings.copyToClipboard) {
+        await vscode.env.clipboard.writeText(message);
+        void vscode.window.showWarningMessage('AI Commits generated a message, but VS Code did not keep the full text in Source Control. The full message was copied to the clipboard; check Output > AI Commits.');
+      } else {
+        void vscode.window.showWarningMessage('AI Commits generated a message, but VS Code did not keep the full text in Source Control; check Output > AI Commits.');
+      }
     } else {
-      void vscode.window.showInformationMessage('AI Commits copied the generated message to the clipboard.');
+      if (settings.copyToClipboard) {
+        await vscode.env.clipboard.writeText(message);
+        void vscode.window.showInformationMessage('AI Commits copied the generated message to the clipboard.');
+      } else {
+        void vscode.window.showInformationMessage('AI Commits generated a commit message but could not write it to Source Control. Enable "Copy to clipboard" in settings or check Output > AI Commits.');
+      }
     }
   } catch (error) {
     if (isCancellation(error)) {

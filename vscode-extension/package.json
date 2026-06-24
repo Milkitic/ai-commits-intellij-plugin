@@ -211,6 +211,11 @@
           "default": false,
           "description": "Reserved for providers that can stream responses."
         },
+        "aiCommits.copyToClipboard": {
+          "type": "boolean",
+          "default": false,
+          "description": "Copy the generated commit message to the clipboard."
+        },
         "aiCommits.exclusions": {
           "type": "array",
           "default": [],

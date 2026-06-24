@@ -28,6 +28,7 @@ interface SettingsPageState {
   diffMode: 'staged' | 'workingTree' | 'stagedThenWorkingTree';
   exclusions: string[];
   useStreamingResponse: boolean;
+  copyToClipboard: boolean;
 }
 
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -155,6 +156,7 @@ async function saveState(state: SettingsPageState): Promise<void> {
   await updateConfigurationValue('diffMode', state.diffMode);
   await updateConfigurationValue('exclusions', state.exclusions);
   await updateConfigurationValue('useStreamingResponse', state.useStreamingResponse);
+  await updateConfigurationValue('copyToClipboard', state.copyToClipboard);
 
   if (activeClient) {
     await updateConfigurationValue('provider', activeClient.provider);
@@ -266,7 +268,8 @@ function settingsFromState(state: SettingsPageState, client: LlmClientConfigurat
     locale: state.locale,
     diffMode: state.diffMode,
     exclusions: state.exclusions,
-    useStreamingResponse: state.useStreamingResponse
+    useStreamingResponse: state.useStreamingResponse,
+    copyToClipboard: state.copyToClipboard
   };
 }
 
@@ -279,7 +282,8 @@ function toPageState(settings: Settings): SettingsPageState {
     locale: settings.locale,
     diffMode: settings.diffMode,
     exclusions: settings.exclusions,
-    useStreamingResponse: settings.useStreamingResponse
+    useStreamingResponse: settings.useStreamingResponse,
+    copyToClipboard: settings.copyToClipboard
   };
 }
 
@@ -305,7 +309,8 @@ function sanitizeState(value: unknown): SettingsPageState {
     locale: asString(record.locale) || 'English',
     diffMode: sanitizeDiffMode(record.diffMode),
     exclusions: Array.isArray(record.exclusions) ? record.exclusions.map(asString).filter(Boolean) : [],
-    useStreamingResponse: Boolean(record.useStreamingResponse)
+    useStreamingResponse: Boolean(record.useStreamingResponse),
+    copyToClipboard: Boolean(record.copyToClipboard)
   };
 }
 
@@ -660,6 +665,11 @@ function getHtml(webview: vscode.Webview): string {
       <label><input id="streaming" type="checkbox">Streaming response</label>
       <span class="help">Some providers fall back to normal response.</span>
     </div>
+    <div class="row">
+      <div></div>
+      <label><input id="copyToClipboard" type="checkbox">Copy generated message to clipboard</label>
+      <span class="help">Disabled by default.</span>
+    </div>
 
     <div class="table-wrap">
       <div class="toolbar">
@@ -866,7 +876,12 @@ function getHtml(webview: vscode.Webview): string {
         renderPrompts();
       });
       $('streaming').addEventListener('change', () => {
-        state.useStreamingResponse = $('streaming').checked;
+      state.useStreamingResponse = $('streaming').checked;
+      state.copyToClipboard = $('copyToClipboard').checked;
+        setDirty(true);
+      });
+      $('copyToClipboard').addEventListener('change', () => {
+        state.copyToClipboard = $('copyToClipboard').checked;
         setDirty(true);
       });
       $('locale').addEventListener('input', () => {
@@ -909,6 +924,7 @@ function getHtml(webview: vscode.Webview): string {
     function render() {
       if (!state) return;
       $('streaming').checked = state.useStreamingResponse;
+      $('copyToClipboard').checked = state.copyToClipboard;
       $('locale').value = state.locale;
       $('diffMode').value = state.diffMode;
       renderClients();
@@ -1205,6 +1221,7 @@ function getHtml(webview: vscode.Webview): string {
       state.diffMode = 'stagedThenWorkingTree';
       state.exclusions = [];
       state.useStreamingResponse = false;
+      state.copyToClipboard = false;
       selectedClientId = client.id;
       selectedPromptId = 'basic';
       setDirty(true);
