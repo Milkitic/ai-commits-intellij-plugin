@@ -5,8 +5,11 @@ import { cleanupGeneratedMessage, constructPrompt } from './prompt';
 import { createProvider } from './llm/providers';
 import { openSettingsPage } from './settingsWebview';
 
+const outputChannel = vscode.window.createOutputChannel('AI Commits');
+
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
+    outputChannel,
     vscode.commands.registerCommand('aiCommits.generate', () => generateCommitMessage(context, false)),
     vscode.commands.registerCommand('aiCommits.generateWithHint', () => generateCommitMessage(context, true)),
     vscode.commands.registerCommand('aiCommits.previewPrompt', () => previewPrompt()),
@@ -46,30 +49,57 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
   try {
     const provider = createProvider(settings.provider);
     const apiKey = await getApiKey(context, settings.provider, settings.activeClientId);
-    const message = await vscode.window.withProgress(
+    const { rawMessage, message } = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
         title: `AI Commits: generating with ${providerLabels[settings.provider]}`,
         cancellable: true
       },
       async (_progress, cancellationToken) => {
-        const generated = await provider.generate(prompt, {
+        let generated = await provider.generate(prompt, {
           settings,
           apiKey,
           cancellationToken
         });
-        return cleanupGeneratedMessage(generated, settings);
+        let cleaned = cleanupGeneratedMessage(generated, settings);
+
+        if (isSuspiciouslyShortMessage(cleaned)) {
+          outputChannel.appendLine(`[${new Date().toISOString()}] Provider returned a suspiciously short message; retrying once.`);
+          const retryPrompt = `${prompt}\n\nYour previous answer was too short or incomplete. Return exactly one complete Git commit message. Do not return a prefix, fragment, explanation, or code block.`;
+          generated = await provider.generate(retryPrompt, {
+            settings,
+            apiKey,
+            cancellationToken
+          });
+          cleaned = cleanupGeneratedMessage(generated, settings);
+        }
+
+        return {
+          rawMessage: generated,
+          message: cleaned
+        };
       }
     );
+
+    logGeneration(rawMessage, message);
 
     if (!message.trim()) {
       void vscode.window.showWarningMessage('AI Commits generated an empty commit message.');
       return;
     }
 
-    const wroteToInput = await setCommitInput(repositoryContext, message);
-    if (wroteToInput) {
-      void vscode.window.showInformationMessage('AI Commits wrote the generated message to Source Control.');
+    if (isSuspiciouslyShortMessage(message)) {
+      void vscode.window.showWarningMessage('AI Commits generated a suspiciously short message even after retrying. The raw result was copied to the clipboard; check Output > AI Commits.');
+      await vscode.env.clipboard.writeText(rawMessage.trim() || message.trim());
+      return;
+    }
+
+    const writeResult = await setCommitInput(repositoryContext, message);
+    if (writeResult.wroteToInput && writeResult.verified) {
+      void vscode.window.showInformationMessage('AI Commits wrote the generated message to Source Control and copied it to the clipboard.');
+    } else if (writeResult.wroteToInput) {
+      logInputMismatch(message, writeResult.actualValue ?? '');
+      void vscode.window.showWarningMessage('AI Commits generated a message, but VS Code did not keep the full text in Source Control. The full message was copied to the clipboard; check Output > AI Commits.');
     } else {
       void vscode.window.showInformationMessage('AI Commits copied the generated message to the clipboard.');
     }
@@ -106,7 +136,11 @@ async function preparePrompt(repositoryContext: RepositoryContext, hint?: string
   const diff = await getDiff(repositoryContext.rootUri, settings);
 
   if (!diff.trim()) {
-    const source = settings.diffMode === 'staged' ? 'staged' : 'working tree';
+    const source = settings.diffMode === 'staged'
+      ? 'staged'
+      : settings.diffMode === 'workingTree'
+        ? 'working tree'
+        : 'staged or working tree';
     void vscode.window.showWarningMessage(`Git diff is empty. Add ${source} changes before generating a commit message.`);
     return undefined;
   }
@@ -226,4 +260,24 @@ function errorMessage(error: unknown): string {
 
 function isCancellation(error: unknown): boolean {
   return error instanceof Error && error.message === 'Generation cancelled.';
+}
+
+function isSuspiciouslyShortMessage(message: string): boolean {
+  return message.trim().length < 8;
+}
+
+function logGeneration(rawMessage: string, cleanedMessage: string): void {
+  outputChannel.appendLine(`[${new Date().toISOString()}] Generated commit message`);
+  outputChannel.appendLine(`Raw length: ${rawMessage.length}; cleaned length: ${cleanedMessage.length}`);
+  outputChannel.appendLine('Cleaned message:');
+  outputChannel.appendLine(cleanedMessage);
+  outputChannel.appendLine('');
+}
+
+function logInputMismatch(expected: string, actual: string): void {
+  outputChannel.appendLine(`[${new Date().toISOString()}] Source Control input mismatch`);
+  outputChannel.appendLine(`Expected length: ${expected.length}; actual length: ${actual.length}`);
+  outputChannel.appendLine('Actual Source Control value:');
+  outputChannel.appendLine(actual);
+  outputChannel.appendLine('');
 }

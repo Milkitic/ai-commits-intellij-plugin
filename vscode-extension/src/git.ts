@@ -1,4 +1,5 @@
 import { execFile } from 'child_process';
+import * as fs from 'fs/promises';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -6,6 +7,9 @@ import { Settings } from './config';
 
 const execFileAsync = promisify(execFile);
 const gitMaxBuffer = 80 * 1024 * 1024;
+const maxUntrackedFileBytes = 1024 * 1024;
+
+type DiffScope = 'staged' | 'workingTree';
 
 interface GitRepositoryLike {
   rootUri: vscode.Uri;
@@ -22,6 +26,12 @@ interface GitRepositoryLike {
 export interface RepositoryContext {
   rootUri: vscode.Uri;
   repository?: GitRepositoryLike;
+}
+
+export interface CommitInputWriteResult {
+  wroteToInput: boolean;
+  verified: boolean;
+  actualValue?: string;
 }
 
 export async function pickRepository(): Promise<RepositoryContext | undefined> {
@@ -69,20 +79,41 @@ export async function pickRepository(): Promise<RepositoryContext | undefined> {
 }
 
 export async function getDiff(rootUri: vscode.Uri, settings: Settings): Promise<string> {
-  const changedFiles = await getChangedFiles(rootUri, settings);
-  const includedFiles = changedFiles.filter((file) => !matchesAnyGlob(file, settings.exclusions));
+  if (settings.diffMode === 'stagedThenWorkingTree') {
+    const stagedDiff = await getScopedDiff(rootUri, settings, 'staged');
+    if (stagedDiff.trim()) {
+      return stagedDiff;
+    }
 
-  if (includedFiles.length === 0) {
+    return getScopedDiff(rootUri, settings, 'workingTree');
+  }
+
+  return getScopedDiff(rootUri, settings, settings.diffMode);
+}
+
+async function getScopedDiff(rootUri: vscode.Uri, settings: Settings, scope: DiffScope): Promise<string> {
+  const changedFiles = await getChangedFiles(rootUri, scope, settings.timeoutSeconds);
+  const includedFiles = changedFiles.filter((file) => !matchesAnyGlob(file, settings.exclusions));
+  const untrackedFiles = scope === 'workingTree'
+    ? (await getUntrackedFiles(rootUri, settings.timeoutSeconds)).filter((file) => !matchesAnyGlob(file, settings.exclusions))
+    : [];
+
+  if (includedFiles.length === 0 && untrackedFiles.length === 0) {
     return '';
   }
 
   const args = ['diff'];
-  if (settings.diffMode === 'staged') {
+  if (scope === 'staged') {
     args.push('--staged');
   }
   args.push('--no-ext-diff', '--no-color', '--', ...includedFiles);
 
-  const diff = await runGit(rootUri, args, settings.timeoutSeconds);
+  const trackedDiff = includedFiles.length > 0
+    ? await runGit(rootUri, args, settings.timeoutSeconds)
+    : '';
+  const untrackedDiff = await buildUntrackedDiff(rootUri, untrackedFiles);
+  const diff = [trackedDiff.trim(), untrackedDiff.trim()].filter(Boolean).join('\n\n');
+
   return diff.trim() ? `Repository: ${rootUri.fsPath}\n${diff}` : '';
 }
 
@@ -126,16 +157,37 @@ export async function getPreviousCommitMessages(rootUri: vscode.Uri, count: numb
   }
 }
 
-export async function setCommitInput(context: RepositoryContext, message: string): Promise<boolean> {
+export async function setCommitInput(context: RepositoryContext, message: string): Promise<CommitInputWriteResult> {
+  const normalizedMessage = normalizeCommitMessage(message);
+  await vscode.env.clipboard.writeText(normalizedMessage);
+
   const inputBox = context.repository?.inputBox;
   if (inputBox) {
-    inputBox.value = message;
     await vscode.commands.executeCommand('workbench.view.scm');
-    return true;
+    await sleep(50);
+
+    inputBox.value = '';
+    await sleep(10);
+    inputBox.value = normalizedMessage;
+    await sleep(80);
+
+    if (normalizeCommitMessage(inputBox.value) !== normalizedMessage) {
+      inputBox.value = normalizedMessage;
+      await sleep(120);
+    }
+
+    const actualValue = inputBox.value;
+    return {
+      wroteToInput: true,
+      verified: normalizeCommitMessage(actualValue) === normalizedMessage,
+      actualValue
+    };
   }
 
-  await vscode.env.clipboard.writeText(message);
-  return false;
+  return {
+    wroteToInput: false,
+    verified: false
+  };
 }
 
 async function getGitRepositories(): Promise<GitRepositoryLike[]> {
@@ -149,18 +201,93 @@ async function getGitRepositories(): Promise<GitRepositoryLike[]> {
   return Array.isArray(api?.repositories) ? api.repositories : [];
 }
 
-async function getChangedFiles(rootUri: vscode.Uri, settings: Settings): Promise<string[]> {
+async function getChangedFiles(rootUri: vscode.Uri, scope: DiffScope, timeoutSeconds: number): Promise<string[]> {
   const args = ['diff'];
-  if (settings.diffMode === 'staged') {
+  if (scope === 'staged') {
     args.push('--staged');
   }
-  args.push('--name-only', '--diff-filter=ACMRTUXB');
+  args.push('--name-only', '--diff-filter=ACDMRTUXB');
 
-  const output = await runGit(rootUri, args, settings.timeoutSeconds);
+  const output = await runGit(rootUri, args, timeoutSeconds);
   return output
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+async function getUntrackedFiles(rootUri: vscode.Uri, timeoutSeconds: number): Promise<string[]> {
+  const output = await runGit(rootUri, ['ls-files', '--others', '--exclude-standard', '-z'], timeoutSeconds);
+  return output
+    .split('\0')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function buildUntrackedDiff(rootUri: vscode.Uri, files: string[]): Promise<string> {
+  const patches = await Promise.all(files.map((file) => buildUntrackedFilePatch(rootUri, file)));
+  return patches.filter(Boolean).join('\n');
+}
+
+async function buildUntrackedFilePatch(rootUri: vscode.Uri, file: string): Promise<string> {
+  const normalizedFile = normalizePath(file);
+  const absolutePath = path.join(rootUri.fsPath, file);
+
+  try {
+    const stats = await fs.stat(absolutePath);
+    if (!stats.isFile()) {
+      return '';
+    }
+
+    if (stats.size > maxUntrackedFileBytes) {
+      return buildOmittedUntrackedFilePatch(normalizedFile, `Large untracked file omitted (${stats.size} bytes).`);
+    }
+
+    const content = await fs.readFile(absolutePath);
+    if (isBinary(content)) {
+      return buildOmittedUntrackedFilePatch(normalizedFile, `Binary untracked file omitted (${content.length} bytes).`);
+    }
+
+    return buildNewTextFilePatch(normalizedFile, content.toString('utf8'));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return buildOmittedUntrackedFilePatch(normalizedFile, `Unable to read untracked file: ${message}`);
+  }
+}
+
+function buildNewTextFilePatch(file: string, content: string): string {
+  const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const hasTrailingNewline = normalizedContent.endsWith('\n');
+  const body = hasTrailingNewline ? normalizedContent.slice(0, -1) : normalizedContent;
+  const lines = body.length > 0 ? body.split('\n') : [];
+  const header = [
+    `diff --git a/${file} b/${file}`,
+    'new file mode 100644',
+    '--- /dev/null',
+    `+++ b/${file}`,
+    `@@ -0,0 +1,${lines.length} @@`
+  ];
+  const patchLines = lines.map((line) => `+${line}`);
+
+  if (!hasTrailingNewline && lines.length > 0) {
+    patchLines.push('\\ No newline at end of file');
+  }
+
+  return [...header, ...patchLines].join('\n');
+}
+
+function buildOmittedUntrackedFilePatch(file: string, reason: string): string {
+  return [
+    `diff --git a/${file} b/${file}`,
+    'new file mode 100644',
+    '--- /dev/null',
+    `+++ b/${file}`,
+    '@@ -0,0 +1 @@',
+    `+${reason}`
+  ].join('\n');
+}
+
+function isBinary(content: Buffer): boolean {
+  return content.subarray(0, Math.min(content.length, 8000)).includes(0);
 }
 
 async function runGit(rootUri: vscode.Uri, args: string[], timeoutSeconds: number): Promise<string> {
@@ -228,4 +355,12 @@ function globToRegExp(glob: string): RegExp {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&');
+}
+
+function normalizeCommitMessage(message: string): string {
+  return message.replace(/\r\n/g, '\n').trim();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

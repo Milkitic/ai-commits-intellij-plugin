@@ -31,31 +31,45 @@
     "commands": [
       {
         "command": "aiCommits.generate",
-        "title": "AI Commits: Generate Commit Message"
+        "title": "Generate Commit Message",
+        "category": "AI Commits",
+        "icon": "$(sparkle)"
       },
       {
         "command": "aiCommits.generateWithHint",
-        "title": "AI Commits: Generate Commit Message with Hint"
+        "title": "Generate Commit Message with Hint",
+        "category": "AI Commits",
+        "icon": "$(lightbulb)"
       },
       {
         "command": "aiCommits.previewPrompt",
-        "title": "AI Commits: Preview Prompt"
+        "title": "Preview Prompt",
+        "category": "AI Commits",
+        "icon": "$(preview)"
       },
       {
         "command": "aiCommits.setApiKey",
-        "title": "AI Commits: Set API Key"
+        "title": "Set API Key",
+        "category": "AI Commits",
+        "icon": "$(key)"
       },
       {
         "command": "aiCommits.clearApiKey",
-        "title": "AI Commits: Clear API Key"
+        "title": "Clear API Key",
+        "category": "AI Commits",
+        "icon": "$(trash)"
       },
       {
         "command": "aiCommits.selectProvider",
-        "title": "AI Commits: Select Provider"
+        "title": "Select Provider",
+        "category": "AI Commits",
+        "icon": "$(server-environment)"
       },
       {
         "command": "aiCommits.openSettings",
-        "title": "AI Commits: Open Settings"
+        "title": "Open Settings",
+        "category": "AI Commits",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
@@ -138,8 +152,8 @@
         },
         "aiCommits.maxTokens": {
           "type": "number",
-          "default": 300,
-          "minimum": 1,
+          "default": 4096,
+          "minimum": 1024,
           "description": "Maximum output tokens for providers that support it."
         },
         "aiCommits.locale": {
@@ -184,12 +198,13 @@
         },
         "aiCommits.diffMode": {
           "type": "string",
-          "default": "staged",
+          "default": "stagedThenWorkingTree",
           "enum": [
+            "stagedThenWorkingTree",
             "staged",
             "workingTree"
           ],
-          "description": "Whether to generate from staged changes or all unstaged working tree changes."
+          "description": "Whether to generate from staged changes, working tree changes, or staged changes with working tree fallback."
         },
         "aiCommits.useStreamingResponse": {
           "type": "boolean",

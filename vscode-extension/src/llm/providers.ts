@@ -1,4 +1,4 @@
-import { getEffectiveBaseUrl, getEffectiveModel, Provider } from '../config';
+import { getEffectiveBaseUrl, getEffectiveModel, minimumCommitMessageTokens, Provider, Settings } from '../config';
 import { compactObject, expectObject, expectString, fetchJson } from './http';
 import { LlmError, LlmProvider, GenerateOptions } from './types';
 import { runClaudeCodeCli, runCodexCli } from './cli';
@@ -58,7 +58,7 @@ class OpenAiCompatibleProvider implements LlmProvider {
           ],
           temperature: settings.temperature,
           top_p: settings.topP,
-          max_tokens: settings.maxTokens
+          max_tokens: outputTokenLimit(settings)
         }))
       },
       settings.timeoutSeconds,
@@ -94,7 +94,7 @@ class AnthropicProvider implements LlmProvider {
         },
         body: JSON.stringify(compactObject({
           model: getEffectiveModel(settings),
-          max_tokens: settings.maxTokens,
+          max_tokens: outputTokenLimit(settings),
           temperature: settings.temperature,
           top_p: settings.topP,
           top_k: settings.topK,
@@ -154,7 +154,7 @@ class GeminiProvider implements LlmProvider {
             temperature: settings.temperature,
             topP: settings.topP,
             topK: settings.topK,
-            maxOutputTokens: settings.maxTokens
+            maxOutputTokens: outputTokenLimit(settings)
           })
         }))
       },
@@ -206,7 +206,7 @@ class OllamaProvider implements LlmProvider {
             temperature: settings.temperature,
             top_p: settings.topP,
             top_k: settings.topK,
-            num_predict: settings.maxTokens
+            num_predict: outputTokenLimit(settings)
           })
         }))
       },
@@ -224,4 +224,8 @@ class OllamaProvider implements LlmProvider {
 
     return expectString(response.response, 'message content');
   }
+}
+
+function outputTokenLimit(settings: Settings): number {
+  return Math.max(minimumCommitMessageTokens, Math.floor(settings.maxTokens || 0));
 }

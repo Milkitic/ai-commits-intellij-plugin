@@ -11,8 +11,10 @@ export const providers = [
 ] as const;
 
 export type Provider = typeof providers[number];
-export type DiffMode = 'staged' | 'workingTree';
+export type DiffMode = 'staged' | 'workingTree' | 'stagedThenWorkingTree';
 export type PromptPreset = 'basic' | 'conventional' | 'gitmoji' | 'custom';
+export const defaultMaxOutputTokens = 4096;
+export const minimumCommitMessageTokens = 1024;
 
 export interface LlmClientConfiguration {
   id: string;
@@ -87,7 +89,11 @@ export function getSettings(): Settings {
   const activePrompt = prompts.find((prompt) => prompt.id === activePromptId) ?? prompts[0];
   const provider = readEnum(config.get<string>('provider'), providers, 'openai');
   const promptPreset = readEnum(config.get<string>('promptPreset'), ['basic', 'conventional', 'gitmoji', 'custom'] as const, 'basic');
-  const diffMode = readEnum(config.get<string>('diffMode'), ['staged', 'workingTree'] as const, 'staged');
+  const diffMode = readEnum(
+    config.get<string>('diffMode'),
+    ['stagedThenWorkingTree', 'staged', 'workingTree'] as const,
+    'stagedThenWorkingTree'
+  );
 
   return {
     provider: activeClient?.provider ?? provider,
@@ -97,7 +103,7 @@ export function getSettings(): Settings {
     temperature: activeClient?.temperature ?? config.get<number>('temperature', 0.2),
     topP: activeClient?.topP ?? readOptionalNumber(config.get<number | null>('topP', null)),
     topK: activeClient?.topK ?? readOptionalNumber(config.get<number | null>('topK', null)),
-    maxTokens: activeClient?.maxTokens ?? Math.max(1, config.get<number>('maxTokens', 300)),
+    maxTokens: activeClient?.maxTokens ?? Math.max(minimumCommitMessageTokens, config.get<number>('maxTokens', defaultMaxOutputTokens)),
     locale: config.get<string>('locale', '').trim() || inferLocaleName(),
     promptPreset,
     customPrompt: config.get<string>('customPrompt', ''),
@@ -181,7 +187,7 @@ export function createDefaultClient(provider: Provider, index = 1): LlmClientCon
     temperature: 0.2,
     topP: undefined,
     topK: undefined,
-    maxTokens: 300,
+    maxTokens: defaultMaxOutputTokens,
     cleanupRegex: '',
     cleanupRegexIgnoreCase: false,
     cliPath: '',
@@ -270,7 +276,7 @@ function getClientConfigurations(config: vscode.WorkspaceConfiguration): LlmClie
   fallback.temperature = config.get<number>('temperature', fallback.temperature);
   fallback.topP = readOptionalNumber(config.get<number | null>('topP', null));
   fallback.topK = readOptionalNumber(config.get<number | null>('topK', null));
-  fallback.maxTokens = Math.max(1, config.get<number>('maxTokens', fallback.maxTokens));
+  fallback.maxTokens = Math.max(minimumCommitMessageTokens, config.get<number>('maxTokens', fallback.maxTokens));
   fallback.cleanupRegex = config.get<string>('cleanupRegex', '');
   fallback.cleanupRegexIgnoreCase = config.get<boolean>('cleanupRegexIgnoreCase', false);
   fallback.cliPath = config.get<string>('cliPath', '').trim();
@@ -309,7 +315,7 @@ function normalizeClientConfiguration(value: unknown): LlmClientConfiguration | 
     temperature: readNumber(record.temperature, 0.2),
     topP: readOptionalNumber(readUnknownNumber(record.topP)),
     topK: readOptionalNumber(readUnknownNumber(record.topK)),
-    maxTokens: Math.max(1, readNumber(record.maxTokens, 300)),
+    maxTokens: Math.max(minimumCommitMessageTokens, readNumber(record.maxTokens, defaultMaxOutputTokens)),
     cleanupRegex: typeof record.cleanupRegex === 'string' ? record.cleanupRegex : '',
     cleanupRegexIgnoreCase: Boolean(record.cleanupRegexIgnoreCase),
     cliPath: typeof record.cliPath === 'string' ? record.cliPath : '',

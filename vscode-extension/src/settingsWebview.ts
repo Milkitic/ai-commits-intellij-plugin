@@ -2,12 +2,14 @@ import * as vscode from 'vscode';
 import {
   createDefaultClient,
   createDefaultPrompts,
+  defaultMaxOutputTokens,
   getClientSecretKey,
   getDefaultBaseUrl,
   getDefaultModel,
   getSecretKey,
   getSettings,
   LlmClientConfiguration,
+  minimumCommitMessageTokens,
   PromptConfiguration,
   providerLabels,
   providers,
@@ -23,7 +25,7 @@ interface SettingsPageState {
   activePromptId: string;
   prompts: PromptConfiguration[];
   locale: string;
-  diffMode: 'staged' | 'workingTree';
+  diffMode: 'staged' | 'workingTree' | 'stagedThenWorkingTree';
   exclusions: string[];
   useStreamingResponse: boolean;
 }
@@ -304,7 +306,7 @@ function sanitizeState(value: unknown): SettingsPageState {
     activePromptId: asString(record.activePromptId) || prompts[0]?.id || '',
     prompts: prompts.length > 0 ? prompts : createDefaultPrompts(),
     locale: asString(record.locale) || 'English',
-    diffMode: record.diffMode === 'workingTree' ? 'workingTree' : 'staged',
+    diffMode: sanitizeDiffMode(record.diffMode),
     exclusions: Array.isArray(record.exclusions) ? record.exclusions.map(asString).filter(Boolean) : [],
     useStreamingResponse: Boolean(record.useStreamingResponse)
   };
@@ -330,7 +332,7 @@ function sanitizeClient(value: unknown): LlmClientConfiguration | undefined {
     temperature: asNumber(record.temperature, 0.2),
     topP: asOptionalNumber(record.topP),
     topK: asOptionalNumber(record.topK),
-    maxTokens: Math.max(1, asNumber(record.maxTokens, 300)),
+    maxTokens: Math.max(minimumCommitMessageTokens, asNumber(record.maxTokens, defaultMaxOutputTokens)),
     cleanupRegex: asString(record.cleanupRegex),
     cleanupRegexIgnoreCase: Boolean(record.cleanupRegexIgnoreCase),
     cliPath: asString(record.cliPath),
@@ -394,6 +396,14 @@ function asNumber(value: unknown, fallback: number): number {
 
 function asOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function sanitizeDiffMode(value: unknown): SettingsPageState['diffMode'] {
+  if (value === 'staged' || value === 'workingTree' || value === 'stagedThenWorkingTree') {
+    return value;
+  }
+
+  return 'stagedThenWorkingTree';
 }
 
 function getHtml(webview: vscode.Webview): string {
@@ -688,6 +698,7 @@ function getHtml(webview: vscode.Webview): string {
     <div class="row">
       <div class="label">Diff mode</div>
       <select id="diffMode">
+        <option value="stagedThenWorkingTree">Staged, fallback to working tree</option>
         <option value="staged">Staged changes</option>
         <option value="workingTree">Working tree changes</option>
       </select>
@@ -756,7 +767,7 @@ function getHtml(webview: vscode.Webview): string {
             <div class="form-row"><div class="label">Temperature</div><input id="clientTemperature" type="number" min="0" max="2" step="0.1"><span></span></div>
             <div class="form-row"><div class="label">Top P</div><input id="clientTopP" type="number" min="0" max="1" step="0.01"><span></span></div>
             <div class="form-row"><div class="label">Top K</div><input id="clientTopK" type="number" min="1"><span></span></div>
-            <div class="form-row"><div class="label">Max tokens</div><input id="clientMaxTokens" type="number" min="1"><span></span></div>
+            <div class="form-row"><div class="label">Max tokens</div><input id="clientMaxTokens" type="number" min="${minimumCommitMessageTokens}"><span class="help">default ${defaultMaxOutputTokens}, minimum ${minimumCommitMessageTokens}</span></div>
             <div class="form-row cli-only"><div class="label">CLI Path</div><input id="clientCliPath"><span class="help">Leave blank to use PATH</span></div>
             <div class="form-row codex-only"><div class="label">Reasoning level</div><select id="clientReasoning"><option>minimal</option><option>low</option><option>medium</option><option>high</option></select><span></span></div>
             <div class="form-row"><div class="label">Clean up regex</div><input id="clientCleanupRegex"><span></span></div>
@@ -1029,7 +1040,7 @@ function getHtml(webview: vscode.Webview): string {
         temperature: numberValue('clientTemperature', 0.2),
         topP: optionalNumberValue('clientTopP'),
         topK: optionalNumberValue('clientTopK'),
-        maxTokens: numberValue('clientMaxTokens', 300),
+        maxTokens: Math.max(${minimumCommitMessageTokens}, numberValue('clientMaxTokens', ${defaultMaxOutputTokens})),
         cleanupRegex: $('clientCleanupRegex').value,
         cleanupRegexIgnoreCase: $('clientCleanupIgnoreCase').checked,
         cliPath: $('clientCliPath').value.trim(),
@@ -1185,7 +1196,7 @@ function getHtml(webview: vscode.Webview): string {
       state.prompts = makeDefaultPrompts();
       state.activePromptId = 'basic';
       state.locale = 'English';
-      state.diffMode = 'staged';
+      state.diffMode = 'stagedThenWorkingTree';
       state.exclusions = [];
       state.useStreamingResponse = false;
       selectedClientId = client.id;
@@ -1212,7 +1223,7 @@ function getHtml(webview: vscode.Webview): string {
         baseUrl: providerDefault.baseUrl || '',
         timeoutSeconds: 60,
         temperature: 0.2,
-        maxTokens: 300,
+        maxTokens: ${defaultMaxOutputTokens},
         cleanupRegex: '',
         cleanupRegexIgnoreCase: false,
         cliPath: '',

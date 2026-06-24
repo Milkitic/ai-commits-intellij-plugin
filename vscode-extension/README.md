@@ -5,7 +5,8 @@ Generate Git commit messages from diffs with LLMs. This is a VS Code port of the
 ## Features
 
 - Generate a commit message from staged Git changes.
-- Optionally generate from unstaged working tree changes.
+- Optionally generate from working tree changes, including untracked files.
+- Use staged changes first and automatically fall back to working tree changes when nothing is staged.
 - Write the result directly into the Source Control commit input.
 - Use the same prompt variables as the IntelliJ plugin: `{locale}`, `{diff}`, `{branch}`, `{hint}`, `{previousCommitMessages}`, `{taskId}`, `{taskSummary}`, `{taskDescription}`, and `{taskTimeSpent}`.
 - Store API keys in VS Code SecretStorage.
@@ -56,7 +57,7 @@ The main settings are:
 - `aiCommits.baseUrl`: Provider base URL. Leave blank to use the provider default.
 - `aiCommits.promptPreset`: `basic`, `conventional`, `gitmoji`, or `custom`.
 - `aiCommits.customPrompt`: Custom prompt content when `promptPreset` is `custom`.
-- `aiCommits.diffMode`: `staged` or `workingTree`.
+- `aiCommits.diffMode`: `stagedThenWorkingTree`, `staged`, or `workingTree`.
 - `aiCommits.exclusions`: Glob patterns for changed files to omit from the diff.
 - `aiCommits.cleanupRegex`: Regex removed from the generated message.
 - `aiCommits.cliPath`: Path to the Codex CLI or Claude Code executable. Leave blank to use `codex` or `claude` from `PATH`.
@@ -74,4 +75,4 @@ Press `F5` in VS Code from this directory to launch an Extension Development Hos
 
 ## Port Notes
 
-The IntelliJ plugin can compute diffs from selected files and lines in the commit dialog. VS Code's public Git extension API does not expose the exact same commit-dialog selection model, so this port uses staged changes by default and offers `workingTree` as an opt-in diff mode.
+The IntelliJ plugin can compute diffs from selected files and lines in the commit dialog. VS Code's public Git extension API does not expose the exact same commit-dialog selection model, so this port uses staged changes by default and falls back to working tree changes when nothing is staged.
