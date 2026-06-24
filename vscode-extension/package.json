@@ -1,0 +1,204 @@
+{
+  "name": "ai-commits",
+  "displayName": "AI Commits",
+  "description": "Generate commit messages from Git diffs with LLMs.",
+  "version": "0.1.0",
+  "publisher": "blarc",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Source Control",
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:aiCommits.generate",
+    "onCommand:aiCommits.generateWithHint",
+    "onCommand:aiCommits.previewPrompt",
+    "onCommand:aiCommits.setApiKey",
+    "onCommand:aiCommits.clearApiKey",
+    "onCommand:aiCommits.selectProvider"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiCommits.generate",
+        "title": "AI Commits: Generate Commit Message"
+      },
+      {
+        "command": "aiCommits.generateWithHint",
+        "title": "AI Commits: Generate Commit Message with Hint"
+      },
+      {
+        "command": "aiCommits.previewPrompt",
+        "title": "AI Commits: Preview Prompt"
+      },
+      {
+        "command": "aiCommits.setApiKey",
+        "title": "AI Commits: Set API Key"
+      },
+      {
+        "command": "aiCommits.clearApiKey",
+        "title": "AI Commits: Clear API Key"
+      },
+      {
+        "command": "aiCommits.selectProvider",
+        "title": "AI Commits: Select Provider"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "aiCommits.generate",
+          "group": "navigation"
+        },
+        {
+          "command": "aiCommits.generateWithHint",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Commits",
+      "properties": {
+        "aiCommits.provider": {
+          "type": "string",
+          "default": "openai",
+          "enum": [
+            "openai",
+            "openai-compatible",
+            "anthropic",
+            "gemini",
+            "ollama",
+            "codex-cli",
+            "claude-code"
+          ],
+          "description": "LLM provider used to generate commit messages."
+        },
+        "aiCommits.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model ID. Leave blank to use the provider default."
+        },
+        "aiCommits.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Provider base URL. Leave blank to use the provider default."
+        },
+        "aiCommits.timeoutSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 1,
+          "description": "Timeout for HTTP or CLI requests."
+        },
+        "aiCommits.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Sampling temperature."
+        },
+        "aiCommits.topP": {
+          "type": "number",
+          "default": null,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Optional top-p sampling value."
+        },
+        "aiCommits.topK": {
+          "type": "number",
+          "default": null,
+          "minimum": 1,
+          "description": "Optional top-k sampling value for providers that support it."
+        },
+        "aiCommits.maxTokens": {
+          "type": "number",
+          "default": 300,
+          "minimum": 1,
+          "description": "Maximum output tokens for providers that support it."
+        },
+        "aiCommits.locale": {
+          "type": "string",
+          "default": "English",
+          "description": "Language name inserted into the {locale} prompt variable."
+        },
+        "aiCommits.promptPreset": {
+          "type": "string",
+          "default": "basic",
+          "enum": [
+            "basic",
+            "conventional",
+            "gitmoji",
+            "custom"
+          ],
+          "description": "Prompt preset to use."
+        },
+        "aiCommits.customPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "Custom prompt used when aiCommits.promptPreset is custom."
+        },
+        "aiCommits.numberOfPreviousCommits": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0,
+          "description": "Number of previous commit messages inserted into {previousCommitMessages}."
+        },
+        "aiCommits.diffMode": {
+          "type": "string",
+          "default": "staged",
+          "enum": [
+            "staged",
+            "workingTree"
+          ],
+          "description": "Whether to generate from staged changes or all unstaged working tree changes."
+        },
+        "aiCommits.exclusions": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns for changed file paths to exclude from the diff."
+        },
+        "aiCommits.cleanupRegex": {
+          "type": "string",
+          "default": "",
+          "description": "Optional regex removed from the generated commit message."
+        },
+        "aiCommits.cleanupRegexIgnoreCase": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether cleanupRegex is case-insensitive."
+        },
+        "aiCommits.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Codex CLI or Claude Code executable for CLI providers."
+        },
+        "aiCommits.codexReasoningEffort": {
+          "type": "string",
+          "default": "medium",
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "description": "Reasoning effort passed to Codex CLI."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.92.0",
+    "typescript": "^5.5.4"
+  }
+}
