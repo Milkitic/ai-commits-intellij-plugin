@@ -428,36 +428,77 @@ function getHtml(webview: vscode.Webview): string {
       --button-bg: var(--vscode-button-secondaryBackground);
       --button-fg: var(--vscode-button-secondaryForeground);
       --accent: var(--vscode-focusBorder);
+      --card-bg: color-mix(in srgb, var(--vscode-sideBar-background) 55%, var(--vscode-editor-background));
+      --card-header-bg: var(--vscode-sideBar-background);
+      --section-gap: 18px;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 22px;
+      padding: 22px 28px 0;
       color: var(--vscode-foreground);
       background: var(--vscode-editor-background);
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
     }
     .page {
-      max-width: 1120px;
-      min-width: 720px;
+      max-width: 980px;
+      margin: 0 auto 22px;
     }
     h1 {
-      margin: 0 0 18px;
-      font-size: 20px;
+      margin: 0 0 4px;
+      font-size: 22px;
       font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 var(--section-gap);
+    }
+    .card {
+      border: 1px solid var(--panel-border);
+      border-radius: 4px;
+      margin-bottom: var(--section-gap);
+      background: var(--vscode-editor-background);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      background: var(--card-header-bg);
+      border-bottom: 1px solid var(--panel-border);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .card-header .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex: none;
+    }
+    .card-body {
+      padding: 14px 14px 12px;
     }
     .row {
       display: grid;
-      grid-template-columns: 140px minmax(260px, 1fr) auto;
-      gap: 8px;
+      grid-template-columns: 160px minmax(240px, 1fr) auto;
+      gap: 10px;
       align-items: center;
       margin-bottom: 10px;
     }
+    .row:last-child { margin-bottom: 0; }
     .label {
       color: var(--vscode-foreground);
       text-align: right;
-      padding-right: 4px;
+      padding-right: 6px;
+      font-size: 13px;
     }
     .help {
       color: var(--muted);
@@ -470,10 +511,16 @@ function getHtml(webview: vscode.Webview): string {
       color: var(--vscode-input-foreground);
       background: var(--input-bg);
       border: 1px solid var(--input-border);
-      border-radius: 2px;
-      padding: 4px 7px;
+      border-radius: 3px;
+      padding: 4px 8px;
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
+      outline: none;
+      transition: border-color 0.12s ease, box-shadow 0.12s ease;
+    }
+    select:focus, input:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
     }
     textarea {
       resize: vertical;
@@ -484,21 +531,37 @@ function getHtml(webview: vscode.Webview): string {
     input[type="checkbox"] {
       width: auto;
       min-height: auto;
-      margin: 0 4px 0 0;
+      margin: 0 6px 0 0;
+      accent-color: var(--accent);
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+    }
+    .checkbox-row label {
+      cursor: pointer;
+      font-size: 13px;
     }
     button {
       min-height: 28px;
       color: var(--button-fg);
       background: var(--button-bg);
       border: 1px solid var(--vscode-button-border, transparent);
-      border-radius: 2px;
-      padding: 3px 11px;
+      border-radius: 3px;
+      padding: 3px 12px;
       cursor: pointer;
+      font-family: var(--vscode-font-family);
+      font-size: 13px;
+      transition: background 0.12s ease, opacity 0.12s ease;
     }
+    button:hover { background: color-mix(in srgb, var(--button-bg) 82%, var(--vscode-foreground) 4%); }
     button.primary {
       color: var(--vscode-button-foreground);
       background: var(--vscode-button-background);
     }
+    button.primary:hover { background: color-mix(in srgb, var(--vscode-button-background) 88%, var(--vscode-foreground) 8%); }
     button:disabled {
       opacity: 0.5;
       cursor: default;
@@ -510,15 +573,15 @@ function getHtml(webview: vscode.Webview): string {
     }
     .toolbar {
       display: flex;
-      gap: 4px;
-      padding: 5px;
-      border: 1px solid var(--panel-border);
-      border-bottom: 0;
-      background: var(--vscode-sideBar-background);
+      gap: 6px;
+      padding: 6px 8px;
+      background: var(--card-header-bg);
+      border-bottom: 1px solid var(--panel-border);
     }
     .table-wrap {
-      margin: 4px 0 18px 148px;
-      border: 1px solid var(--panel-border);
+      border: 0;
+      border-radius: 0;
+      margin: 0;
     }
     table {
       width: 100%;
@@ -526,17 +589,20 @@ function getHtml(webview: vscode.Webview): string {
     }
     th, td {
       border-top: 1px solid var(--panel-border);
-      padding: 6px 8px;
+      padding: 7px 10px;
       text-align: left;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 420px;
+      font-size: 13px;
     }
     th {
       color: var(--muted);
       font-weight: 600;
       background: var(--vscode-editorGroupHeader-tabsBackground);
+      font-size: 12px;
+      letter-spacing: 0.3px;
     }
     tr.selected {
       background: var(--vscode-list-activeSelectionBackground);
@@ -545,32 +611,42 @@ function getHtml(webview: vscode.Webview): string {
     tbody tr:not(.selected):hover {
       background: var(--row-hover);
     }
-    .section-spacer {
-      height: 6px;
+    .checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 22px;
+      padding: 2px 0 0;
     }
+    .section-spacer { height: 2px; }
     .links {
       display: flex;
-      gap: 18px;
-      margin: 20px 0 0 148px;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      margin: 4px 0 0;
+      padding: 10px 0 14px;
     }
     a {
       color: var(--vscode-textLink-foreground);
       text-decoration: none;
+      font-size: 12px;
     }
     a:hover { text-decoration: underline; }
     .actions {
       display: flex;
       justify-content: flex-end;
+      align-items: center;
       gap: 8px;
       position: sticky;
       bottom: 0;
-      margin-top: 22px;
-      padding: 12px 0 0;
+      margin-top: 4px;
+      padding: 12px 0;
       background: var(--vscode-editor-background);
+      border-top: 1px solid var(--panel-border);
     }
     .status {
       flex: 1;
       color: var(--muted);
+      font-size: 12px;
       align-self: center;
     }
     .modal-backdrop {
@@ -578,54 +654,64 @@ function getHtml(webview: vscode.Webview): string {
       inset: 0;
       display: none;
       place-items: center;
-      background: rgba(0, 0, 0, 0.38);
+      background: rgba(0, 0, 0, 0.42);
+      backdrop-filter: blur(1px);
       z-index: 10;
     }
     .modal-backdrop.open {
       display: grid;
     }
     .modal {
-      width: min(900px, calc(100vw - 52px));
-      max-height: calc(100vh - 60px);
+      width: min(900px, calc(100vw - 60px));
+      max-height: calc(100vh - 80px);
       display: grid;
       grid-template-rows: auto 1fr auto;
       background: var(--vscode-editor-background);
       border: 1px solid var(--panel-border);
-      box-shadow: 0 16px 42px rgba(0, 0, 0, 0.4);
+      border-radius: 5px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
     }
     .modal h2 {
       margin: 0;
-      padding: 12px 14px;
+      padding: 12px 16px;
       font-size: 15px;
+      font-weight: 600;
       border-bottom: 1px solid var(--panel-border);
       background: var(--vscode-sideBar-background);
     }
     .modal-body {
       overflow: auto;
-      padding: 14px;
+      padding: 16px;
     }
     .modal-actions {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      padding: 10px 14px;
+      padding: 10px 16px;
       border-top: 1px solid var(--panel-border);
       background: var(--vscode-sideBar-background);
     }
     .split {
       display: grid;
       grid-template-columns: 190px 1fr;
-      gap: 14px;
+      gap: 16px;
     }
     .provider-list {
       border: 1px solid var(--panel-border);
+      border-radius: 3px;
       min-height: 300px;
-      padding: 4px;
+      padding: 6px;
+      background: var(--card-bg);
     }
     .provider-item {
-      padding: 7px 8px;
-      border-radius: 2px;
+      padding: 7px 9px;
+      border-radius: 3px;
       cursor: pointer;
+      font-size: 13px;
+      transition: background 0.1s ease;
+    }
+    .provider-item:hover {
+      background: var(--row-hover);
     }
     .provider-item.selected {
       background: var(--vscode-list-activeSelectionBackground);
@@ -633,10 +719,10 @@ function getHtml(webview: vscode.Webview): string {
     }
     .form-row {
       display: grid;
-      grid-template-columns: 140px minmax(250px, 1fr) auto;
-      gap: 8px;
+      grid-template-columns: 130px minmax(240px, 1fr) auto;
+      gap: 10px;
       align-items: center;
-      margin-bottom: 9px;
+      margin-bottom: 10px;
     }
     .form-row .label {
       text-align: right;
@@ -644,106 +730,118 @@ function getHtml(webview: vscode.Webview): string {
     .two-col {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 12px;
+      gap: 14px;
     }
-    .hidden {
-      display: none;
-    }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
   <div class="page">
     <h1>AI Commits</h1>
+    <p class="subtitle">Configure providers, prompts, and commit generation behavior.</p>
 
-    <div class="row">
-      <div class="label">LLM Client</div>
-      <select id="activeClient"></select>
-      <label class="help"><input id="projectClient" type="checkbox">Project specific</label>
-    </div>
-    <div class="row">
-      <div></div>
-      <label><input id="streaming" type="checkbox">Streaming response</label>
-      <span class="help">Some providers fall back to normal response.</span>
-    </div>
-    <div class="row">
-      <div></div>
-      <label><input id="copyToClipboard" type="checkbox">Copy generated message to clipboard</label>
-      <span class="help">Disabled by default.</span>
-    </div>
+    <section class="card">
+      <div class="card-header"><span class="dot"></span>LLM Client</div>
+      <div class="card-body">
+        <div class="row">
+          <div class="label">Active client</div>
+          <select id="activeClient"></select>
+          <label class="help"><input id="projectClient" type="checkbox">Project specific</label>
+        </div>
+        <div class="checkboxes">
+          <span class="checkbox-row"><input id="streaming" type="checkbox"><label for="streaming">Streaming response</label></span>
+          <span class="checkbox-row"><input id="copyToClipboard" type="checkbox"><label for="copyToClipboard">Copy generated message to clipboard</label></span>
+        </div>
+        <div class="help" style="padding:4px 0 0 170px;">Some providers fall back to non-streaming. Clipboard copy is disabled by default.</div>
 
-    <div class="table-wrap">
-      <div class="toolbar">
-        <button class="icon" id="addClient" title="Add">+</button>
-        <button class="icon" id="editClient" title="Edit">Edit</button>
-        <button class="icon" id="removeClient" title="Remove">-</button>
-        <button id="setToken">Set Token</button>
-        <button id="clearToken">Clear Token</button>
-        <button id="verifyClient">Verify</button>
+        <div class="table-wrap" style="margin-top:12px;">
+          <div class="toolbar">
+            <button class="icon" id="addClient" title="Add">+</button>
+            <button class="icon" id="editClient" title="Edit">Edit</button>
+            <button class="icon" id="removeClient" title="Remove">-</button>
+            <button id="setToken">Set Token</button>
+            <button id="clearToken">Clear Token</button>
+            <button id="verifyClient">Verify</button>
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Provider</th><th>Model</th><th>Token</th></tr></thead>
+            <tbody id="clientRows"></tbody>
+          </table>
+        </div>
       </div>
-      <table>
-        <thead><tr><th>Name</th><th>Provider</th><th>Model</th><th>Token</th></tr></thead>
-        <tbody id="clientRows"></tbody>
-      </table>
-    </div>
+    </section>
 
-    <div class="section-spacer"></div>
-
-    <div class="row">
-      <div class="label">Locale</div>
-      <input id="locale" list="localeList">
-      <span class="help">Prompts use English locale names.</span>
-    </div>
-    <datalist id="localeList">
-      <option value="English"></option>
-      <option value="Chinese"></option>
-      <option value="French"></option>
-      <option value="German"></option>
-      <option value="Japanese"></option>
-      <option value="Korean"></option>
-      <option value="Spanish"></option>
-    </datalist>
-    <div class="row">
-      <div class="label">Diff mode</div>
-      <select id="diffMode">
-        <option value="stagedThenWorkingTree">Staged, fallback to working tree</option>
-        <option value="staged">Staged changes</option>
-        <option value="workingTree">Working tree changes</option>
-      </select>
-      <span></span>
-    </div>
-
-    <div class="row">
-      <div class="label">Prompt</div>
-      <select id="activePrompt"></select>
-      <label class="help"><input id="projectPrompt" type="checkbox">Project specific</label>
-    </div>
-
-    <div class="table-wrap">
-      <div class="toolbar">
-        <button class="icon" id="addPrompt" title="Add">+</button>
-        <button class="icon" id="editPrompt" title="Edit">Edit</button>
-        <button class="icon" id="removePrompt" title="Remove">-</button>
+    <section class="card">
+      <div class="card-header"><span class="dot"></span>General</div>
+      <div class="card-body">
+        <div class="row">
+          <div class="label">Locale</div>
+          <input id="locale" list="localeList">
+          <span class="help">Prompts use English locale names.</span>
+        </div>
+        <datalist id="localeList">
+          <option value="English"></option>
+          <option value="Chinese"></option>
+          <option value="French"></option>
+          <option value="German"></option>
+          <option value="Japanese"></option>
+          <option value="Korean"></option>
+          <option value="Spanish"></option>
+        </datalist>
+        <div class="row">
+          <div class="label">Diff mode</div>
+          <select id="diffMode">
+            <option value="stagedThenWorkingTree">Staged, fallback to working tree</option>
+            <option value="staged">Staged changes</option>
+            <option value="workingTree">Working tree changes</option>
+          </select>
+          <span></span>
+        </div>
       </div>
-      <table>
-        <thead><tr><th>Name</th><th>Description</th><th>Previous commits</th></tr></thead>
-        <tbody id="promptRows"></tbody>
-      </table>
-    </div>
+    </section>
 
-    <div class="row">
-      <div class="label">Exclusions</div>
-      <input id="newExclusion" placeholder="Glob, for example dist/** or *.lock">
-      <button id="addExclusion">Add</button>
-    </div>
-    <div class="table-wrap">
-      <div class="toolbar">
-        <button class="icon" id="removeExclusion" title="Remove">-</button>
+    <section class="card">
+      <div class="card-header"><span class="dot"></span>Prompts</div>
+      <div class="card-body">
+        <div class="row">
+          <div class="label">Active prompt</div>
+          <select id="activePrompt"></select>
+          <label class="help"><input id="projectPrompt" type="checkbox">Project specific</label>
+        </div>
+
+        <div class="table-wrap" style="margin-top:12px;">
+          <div class="toolbar">
+            <button class="icon" id="addPrompt" title="Add">+</button>
+            <button class="icon" id="editPrompt" title="Edit">Edit</button>
+            <button class="icon" id="removePrompt" title="Remove">-</button>
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Description</th><th>Previous commits</th></tr></thead>
+            <tbody id="promptRows"></tbody>
+          </table>
+        </div>
       </div>
-      <table>
-        <thead><tr><th>Exclusion glob</th></tr></thead>
-        <tbody id="exclusionRows"></tbody>
-      </table>
-    </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><span class="dot"></span>Exclusions</div>
+      <div class="card-body">
+        <div class="row">
+          <div class="label">New exclusion</div>
+          <input id="newExclusion" placeholder="Glob, for example dist/** or *.lock">
+          <button id="addExclusion">Add</button>
+        </div>
+        <div class="table-wrap" style="margin-top:8px;">
+          <div class="toolbar">
+            <button class="icon" id="removeExclusion" title="Remove">-</button>
+          </div>
+          <table>
+            <thead><tr><th>Exclusion glob</th></tr></thead>
+            <tbody id="exclusionRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
     <div class="links">
       <a href="https://github.com/Blarc/ai-commits-intellij-plugin/issues">Report bug</a>
