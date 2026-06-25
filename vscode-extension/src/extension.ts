@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getClientSecretKey, getSecretKey, getSettings, providerLabels, providers, Provider } from './config';
-import { getBranch, getDiff, getPreviousCommitMessages, pickRepository, RepositoryContext, setCommitInput } from './git';
+import { getBranch, getDiff, getPreviousCommitMessages, pickRepository, RepositoryContext, setCommitInput, updateCommitInput } from './git';
 import { cleanupGeneratedMessage, constructPrompt } from './prompt';
 import { createProvider } from './llm/providers';
 import { openSettingsPage } from './settingsWebview';
@@ -49,6 +49,20 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
   try {
     const provider = createProvider(settings.provider);
     const apiKey = await getApiKey(context, settings.provider, settings.activeClientId);
+    let streamingInputRevealed = false;
+    const onText = settings.useStreamingResponse
+      ? async (partialMessage: string) => {
+          const cleaned = cleanupGeneratedMessage(partialMessage, settings);
+          if (!cleaned.trim()) {
+            return;
+          }
+
+          const wrote = await updateCommitInput(repositoryContext, cleaned, {
+            reveal: !streamingInputRevealed
+          });
+          streamingInputRevealed = streamingInputRevealed || wrote;
+        }
+      : undefined;
     const { rawMessage, message } = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -59,7 +73,8 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
         let generated = await provider.generate(prompt, {
           settings,
           apiKey,
-          cancellationToken
+          cancellationToken,
+          onText
         });
         let cleaned = cleanupGeneratedMessage(generated, settings);
 
@@ -69,7 +84,8 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
           generated = await provider.generate(retryPrompt, {
             settings,
             apiKey,
-            cancellationToken
+            cancellationToken,
+            onText
           });
           cleaned = cleanupGeneratedMessage(generated, settings);
         }
@@ -89,9 +105,11 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
     }
 
     if (isSuspiciouslyShortMessage(message)) {
-      void vscode.window.showWarningMessage('AI Commits generated a suspiciously short message even after retrying. The raw result was copied to the clipboard; check Output > AI Commits.');
       if (settings.copyToClipboard) {
         await vscode.env.clipboard.writeText(rawMessage.trim() || message.trim());
+        void vscode.window.showWarningMessage('AI Commits generated a suspiciously short message even after retrying. The raw result was copied to the clipboard; check Output > AI Commits.');
+      } else {
+        void vscode.window.showWarningMessage('AI Commits generated a suspiciously short message even after retrying; check Output > AI Commits.');
       }
       return;
     }

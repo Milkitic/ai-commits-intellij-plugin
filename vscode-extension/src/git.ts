@@ -39,6 +39,10 @@ export interface CommitInputWriteResult {
   actualValue?: string;
 }
 
+export interface CommitInputUpdateOptions {
+  reveal?: boolean;
+}
+
 export async function pickRepository(): Promise<RepositoryContext | undefined> {
   const repositories = await getGitRepositories();
 
@@ -156,7 +160,6 @@ export async function getPreviousCommitMessages(rootUri: vscode.Uri, count: numb
 
 export async function setCommitInput(context: RepositoryContext, message: string): Promise<CommitInputWriteResult> {
   const normalizedMessage = normalizeCommitMessage(message);
-  await vscode.env.clipboard.writeText(normalizedMessage);
 
   const inputBox = context.repository?.inputBox;
   if (inputBox) {
@@ -185,6 +188,24 @@ export async function setCommitInput(context: RepositoryContext, message: string
     wroteToInput: false,
     verified: false
   };
+}
+
+export async function updateCommitInput(
+  context: RepositoryContext,
+  message: string,
+  options: CommitInputUpdateOptions = {}
+): Promise<boolean> {
+  const inputBox = context.repository?.inputBox;
+  if (!inputBox) {
+    return false;
+  }
+
+  if (options.reveal) {
+    await vscode.commands.executeCommand('workbench.view.scm');
+  }
+
+  inputBox.value = normalizeCommitMessage(message);
+  return true;
 }
 
 async function getGitRepositories(): Promise<GitRepositoryLike[]> {

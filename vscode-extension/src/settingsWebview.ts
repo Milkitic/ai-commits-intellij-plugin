@@ -974,8 +974,7 @@ function getHtml(webview: vscode.Webview): string {
         renderPrompts();
       });
       $('streaming').addEventListener('change', () => {
-      state.useStreamingResponse = $('streaming').checked;
-      state.copyToClipboard = $('copyToClipboard').checked;
+        state.useStreamingResponse = $('streaming').checked;
         setDirty(true);
       });
       $('copyToClipboard').addEventListener('change', () => {
@@ -1332,6 +1331,7 @@ function getHtml(webview: vscode.Webview): string {
       state.locale = $('locale').value.trim() || 'English';
       state.diffMode = $('diffMode').value;
       state.useStreamingResponse = $('streaming').checked;
+      state.copyToClipboard = $('copyToClipboard').checked;
     }
 
     function makeClient(provider) {

@@ -209,7 +209,7 @@
         "aiCommits.useStreamingResponse": {
           "type": "boolean",
           "default": false,
-          "description": "Reserved for providers that can stream responses."
+          "description": "Stream partial output into the Source Control commit message input when supported by the provider."
         },
         "aiCommits.copyToClipboard": {
           "type": "boolean",

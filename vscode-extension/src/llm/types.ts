@@ -5,6 +5,7 @@ export interface GenerateOptions {
   settings: Settings;
   apiKey?: string;
   cancellationToken: vscode.CancellationToken;
+  onText?: (text: string) => void | Promise<void>;
 }
 
 export interface LlmProvider {
