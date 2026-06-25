@@ -1,17 +1,21 @@
 import * as vscode from 'vscode';
 import { getClientSecretKey, getSecretKey, getSettings, providerLabels, providers, Provider } from './config';
-import { getBranch, getDiff, getPreviousCommitMessages, pickRepository, RepositoryContext, setCommitInput, updateCommitInput } from './git';
+import { getBranch, getCommitInputValue, getDiff, getPreviousCommitMessages, pickRepository, RepositoryContext, setCommitInput, updateCommitInput } from './git';
 import { cleanupGeneratedMessage, constructPrompt } from './prompt';
 import { createProvider } from './llm/providers';
 import { openSettingsPage } from './settingsWebview';
 
 const outputChannel = vscode.window.createOutputChannel('AI Commits');
+let currentGeneration: vscode.CancellationTokenSource | undefined;
+type HintMode = 'auto' | 'prompt';
 
 export function activate(context: vscode.ExtensionContext): void {
+  void setGeneratingContext(false);
   context.subscriptions.push(
     outputChannel,
-    vscode.commands.registerCommand('aiCommits.generate', () => generateCommitMessage(context, false)),
-    vscode.commands.registerCommand('aiCommits.generateWithHint', () => generateCommitMessage(context, true)),
+    vscode.commands.registerCommand('aiCommits.generate', () => generateCommitMessage(context, 'auto')),
+    vscode.commands.registerCommand('aiCommits.generateWithHint', () => generateCommitMessage(context, 'prompt')),
+    vscode.commands.registerCommand('aiCommits.cancelGeneration', () => cancelCurrentGeneration()),
     vscode.commands.registerCommand('aiCommits.previewPrompt', () => previewPrompt()),
     vscode.commands.registerCommand('aiCommits.setApiKey', () => setApiKey(context)),
     vscode.commands.registerCommand('aiCommits.clearApiKey', () => clearApiKey(context)),
@@ -21,32 +25,36 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  // Nothing to dispose beyond registered subscriptions.
+  cancelCurrentGeneration();
 }
 
-async function generateCommitMessage(context: vscode.ExtensionContext, askForHint: boolean): Promise<void> {
+async function generateCommitMessage(context: vscode.ExtensionContext, hintMode: HintMode): Promise<void> {
+  if (currentGeneration) {
+    cancelCurrentGeneration();
+    return;
+  }
+
   const settings = getSettings();
   const repositoryContext = await pickRepository();
   if (!repositoryContext) {
     return;
   }
 
-  const hint = askForHint ? await vscode.window.showInputBox({
-    title: 'AI Commits',
-    prompt: 'Optional hint for the generated commit message',
-    placeHolder: 'e.g. mention the migration to a VS Code extension'
-  }) : undefined;
-
-  if (askForHint && hint === undefined) {
+  const hint = await resolveHint(repositoryContext, hintMode);
+  if (hintMode === 'prompt' && hint === undefined) {
     return;
   }
 
-  const prompt = await preparePrompt(repositoryContext, hint);
-  if (!prompt) {
-    return;
-  }
+  const generationSource = new vscode.CancellationTokenSource();
+  currentGeneration = generationSource;
+  await setGeneratingContext(true);
 
   try {
+    const prompt = await preparePrompt(repositoryContext, hint);
+    if (!prompt || generationSource.token.isCancellationRequested) {
+      return;
+    }
+
     const provider = createProvider(settings.provider);
     const apiKey = await getApiKey(context, settings.provider, settings.activeClientId);
     let streamingInputRevealed = false;
@@ -70,30 +78,36 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
         cancellable: true
       },
       async (_progress, cancellationToken) => {
-        let generated = await provider.generate(prompt, {
-          settings,
-          apiKey,
-          cancellationToken,
-          onText
-        });
-        let cleaned = cleanupGeneratedMessage(generated, settings);
+        const cancellation = cancellationToken.onCancellationRequested(() => generationSource.cancel());
 
-        if (isSuspiciouslyShortMessage(cleaned)) {
-          outputChannel.appendLine(`[${new Date().toISOString()}] Provider returned a suspiciously short message; retrying once.`);
-          const retryPrompt = `${prompt}\n\nYour previous answer was too short or incomplete. Return exactly one complete Git commit message. Do not return a prefix, fragment, explanation, or code block.`;
-          generated = await provider.generate(retryPrompt, {
+        try {
+          let generated = await provider.generate(prompt, {
             settings,
             apiKey,
-            cancellationToken,
+            cancellationToken: generationSource.token,
             onText
           });
-          cleaned = cleanupGeneratedMessage(generated, settings);
-        }
+          let cleaned = cleanupGeneratedMessage(generated, settings);
 
-        return {
-          rawMessage: generated,
-          message: cleaned
-        };
+          if (isSuspiciouslyShortMessage(cleaned)) {
+            outputChannel.appendLine(`[${new Date().toISOString()}] Provider returned a suspiciously short message; retrying once.`);
+            const retryPrompt = `${prompt}\n\nYour previous answer was too short or incomplete. Return exactly one complete Git commit message. Do not return a prefix, fragment, explanation, or code block.`;
+            generated = await provider.generate(retryPrompt, {
+              settings,
+              apiKey,
+              cancellationToken: generationSource.token,
+              onText
+            });
+            cleaned = cleanupGeneratedMessage(generated, settings);
+          }
+
+          return {
+            rawMessage: generated,
+            message: cleaned
+          };
+        } finally {
+          cancellation.dispose();
+        }
       }
     );
 
@@ -143,7 +157,35 @@ async function generateCommitMessage(context: vscode.ExtensionContext, askForHin
       return;
     }
     void vscode.window.showErrorMessage(`AI Commits failed: ${errorMessage(error)}`);
+  } finally {
+    generationSource.dispose();
+    if (currentGeneration === generationSource) {
+      currentGeneration = undefined;
+    }
+    await setGeneratingContext(false);
   }
+}
+
+async function resolveHint(repositoryContext: RepositoryContext, hintMode: HintMode): Promise<string | undefined> {
+  if (hintMode === 'auto') {
+    return getCommitInputValue(repositoryContext)?.trim() || undefined;
+  }
+
+  if (hintMode === 'prompt') {
+    return await vscode.window.showInputBox({
+      title: 'AI Commits',
+      prompt: 'Optional hint for the generated commit message',
+      placeHolder: 'e.g. mention the migration to a VS Code extension'
+    });
+  }
+}
+
+function cancelCurrentGeneration(): void {
+  currentGeneration?.cancel();
+}
+
+async function setGeneratingContext(isGenerating: boolean): Promise<void> {
+  await vscode.commands.executeCommand('setContext', 'aiCommits.generating', isGenerating);
 }
 
 async function previewPrompt(): Promise<void> {

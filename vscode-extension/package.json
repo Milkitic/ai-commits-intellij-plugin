@@ -20,6 +20,7 @@
   "activationEvents": [
     "onCommand:aiCommits.generate",
     "onCommand:aiCommits.generateWithHint",
+    "onCommand:aiCommits.cancelGeneration",
     "onCommand:aiCommits.previewPrompt",
     "onCommand:aiCommits.setApiKey",
     "onCommand:aiCommits.clearApiKey",
@@ -40,6 +41,12 @@
         "title": "Generate Commit Message with Hint",
         "category": "AI Commits",
         "icon": "$(lightbulb)"
+      },
+      {
+        "command": "aiCommits.cancelGeneration",
+        "title": "Cancel Commit Message Generation",
+        "category": "AI Commits",
+        "icon": "$(debug-stop)"
       },
       {
         "command": "aiCommits.previewPrompt",
@@ -76,11 +83,13 @@
       "scm/title": [
         {
           "command": "aiCommits.generate",
-          "group": "navigation"
+          "when": "!aiCommits.generating",
+          "group": "navigation@1"
         },
         {
-          "command": "aiCommits.generateWithHint",
-          "group": "navigation"
+          "command": "aiCommits.cancelGeneration",
+          "when": "aiCommits.generating",
+          "group": "navigation@1"
         }
       ]
     },

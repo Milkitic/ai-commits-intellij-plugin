@@ -43,6 +43,10 @@ export interface CommitInputUpdateOptions {
   reveal?: boolean;
 }
 
+export function getCommitInputValue(context: RepositoryContext): string | undefined {
+  return context.repository?.inputBox?.value;
+}
+
 export async function pickRepository(): Promise<RepositoryContext | undefined> {
   const repositories = await getGitRepositories();
 
