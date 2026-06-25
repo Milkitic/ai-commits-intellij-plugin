@@ -2,8 +2,8 @@
   "name": "ai-commits",
   "displayName": "AI Commits",
   "description": "Generate commit messages from Git diffs with LLMs.",
-  "version": "0.1.0",
-  "publisher": "blarc",
+  "version": "0.1.1",
+  "publisher": "Milkitic",
   "license": "MIT",
   "repository": {
     "type": "git",
