@@ -32,7 +32,7 @@
     "commands": [
       {
         "command": "aiCommits.generate",
-        "title": "Generate Commit Message",
+        "title": "Generate Commit Message with AI Commits",
         "category": "AI Commits",
         "icon": "$(sparkle)"
       },
