@@ -43,10 +43,7 @@ export async function pickRepository(): Promise<RepositoryContext | undefined> {
   const repositories = await getGitRepositories();
 
   if (repositories.length === 1) {
-    return {
-      rootUri: repositories[0].rootUri,
-      repository: repositories[0]
-    };
+    return createRepositoryContext(repositories[0].rootUri, repositories[0]);
   }
 
   if (repositories.length > 1) {
@@ -61,39 +58,34 @@ export async function pickRepository(): Promise<RepositoryContext | undefined> {
       }
     );
 
-    return picked ? {
-      rootUri: picked.repository.rootUri,
-      repository: picked.repository
-    } : undefined;
+    return picked ? createRepositoryContext(picked.repository.rootUri, picked.repository) : undefined;
   }
 
   const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
   if (workspaceFolders.length === 1) {
-    return {
-      rootUri: workspaceFolders[0].uri
-    };
+    return createRepositoryContext(workspaceFolders[0].uri);
   }
 
   const picked = await vscode.window.showWorkspaceFolderPick({
     placeHolder: 'Select the workspace folder to use for AI Commits'
   });
 
-  return picked ? {
-    rootUri: picked.uri
-  } : undefined;
+  return picked ? createRepositoryContext(picked.uri) : undefined;
 }
 
 export async function getDiff(rootUri: vscode.Uri, settings: Settings): Promise<string> {
+  const repositoryRootUri = await resolveRepositoryRoot(rootUri);
+
   if (settings.diffMode === 'stagedThenWorkingTree') {
-    const stagedDiff = await getScopedDiff(rootUri, settings, 'staged');
+    const stagedDiff = await getScopedDiff(repositoryRootUri, settings, 'staged');
     if (stagedDiff.trim()) {
       return stagedDiff;
     }
 
-    return getScopedDiff(rootUri, settings, 'workingTree');
+    return getScopedDiff(repositoryRootUri, settings, 'workingTree');
   }
 
-  return getScopedDiff(rootUri, settings, settings.diffMode);
+  return getScopedDiff(repositoryRootUri, settings, settings.diffMode);
 }
 
 async function getScopedDiff(rootUri: vscode.Uri, settings: Settings, scope: DiffScope): Promise<string> {
@@ -206,26 +198,36 @@ async function getGitRepositories(): Promise<GitRepositoryLike[]> {
   return Array.isArray(api?.repositories) ? api.repositories : [];
 }
 
+async function createRepositoryContext(rootUri: vscode.Uri, repository?: GitRepositoryLike): Promise<RepositoryContext> {
+  return {
+    rootUri: await resolveRepositoryRoot(rootUri),
+    repository
+  };
+}
+
+async function resolveRepositoryRoot(rootUri: vscode.Uri): Promise<vscode.Uri> {
+  try {
+    const rootPath = (await runGit(rootUri, ['rev-parse', '--show-toplevel'], 15)).trim();
+    return rootPath ? vscode.Uri.file(rootPath) : rootUri;
+  } catch {
+    return rootUri;
+  }
+}
+
 async function getChangedFiles(rootUri: vscode.Uri, scope: DiffScope, timeoutSeconds: number): Promise<string[]> {
   const args = ['diff'];
   if (scope === 'staged') {
     args.push('--staged');
   }
-  args.push('--name-only', '--diff-filter=ACDMRTUXB');
+  args.push('--name-only', '-z', '--diff-filter=ACDMRTUXB');
 
   const output = await runGit(rootUri, args, timeoutSeconds);
-  return output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  return parseNulSeparated(output);
 }
 
 async function getUntrackedFiles(rootUri: vscode.Uri, timeoutSeconds: number): Promise<string[]> {
   const output = await runGit(rootUri, ['ls-files', '--others', '--exclude-standard', '-z'], timeoutSeconds);
-  return output
-    .split('\0')
-    .map((line) => line.trim())
-    .filter(Boolean);
+  return parseNulSeparated(output);
 }
 
 async function buildUntrackedDiff(rootUri: vscode.Uri, files: string[], timeoutSeconds: number): Promise<string> {
@@ -426,6 +428,12 @@ function matchesGlob(filePath: string, pattern: string): boolean {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/');
+}
+
+function parseNulSeparated(output: string): string[] {
+  return output
+    .split('\0')
+    .filter((value) => value.length > 0);
 }
 
 function isNamedDiffDriver(value: string): boolean {
