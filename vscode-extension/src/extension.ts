@@ -73,9 +73,9 @@ async function generateCommitMessage(context: vscode.ExtensionContext, hintMode:
       : undefined;
     const { rawMessage, message } = await vscode.window.withProgress(
       {
-        location: vscode.ProgressLocation.Notification,
+        location: vscode.ProgressLocation.Window,
         title: `AI Commits: generating with ${providerLabels[settings.provider]}`,
-        cancellable: true
+        cancellable: false
       },
       async (_progress, cancellationToken) => {
         const cancellation = cancellationToken.onCancellationRequested(() => generationSource.cancel());
@@ -132,9 +132,9 @@ async function generateCommitMessage(context: vscode.ExtensionContext, hintMode:
     if (writeResult.wroteToInput && writeResult.verified) {
       if (settings.copyToClipboard) {
         await vscode.env.clipboard.writeText(message);
-        void vscode.window.showInformationMessage('AI Commits wrote the generated message to Source Control and copied it to the clipboard.');
+        logStatus('AI Commits wrote the generated message to Source Control and copied it to the clipboard.');
       } else {
-        void vscode.window.showInformationMessage('AI Commits wrote the generated message to Source Control.');
+        logStatus('AI Commits wrote the generated message to Source Control.');
       }
     } else if (writeResult.wroteToInput) {
       logInputMismatch(message, writeResult.actualValue ?? '');
@@ -147,7 +147,7 @@ async function generateCommitMessage(context: vscode.ExtensionContext, hintMode:
     } else {
       if (settings.copyToClipboard) {
         await vscode.env.clipboard.writeText(message);
-        void vscode.window.showInformationMessage('AI Commits copied the generated message to the clipboard.');
+        logStatus('AI Commits copied the generated message to the clipboard.');
       } else {
         void vscode.window.showInformationMessage('AI Commits generated a commit message but could not write it to Source Control. Enable "Copy to clipboard" in settings or check Output > AI Commits.');
       }
@@ -349,6 +349,10 @@ function logGeneration(rawMessage: string, cleanedMessage: string): void {
   outputChannel.appendLine('Cleaned message:');
   outputChannel.appendLine(cleanedMessage);
   outputChannel.appendLine('');
+}
+
+function logStatus(message: string): void {
+  outputChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
 }
 
 function logInputMismatch(expected: string, actual: string): void {
