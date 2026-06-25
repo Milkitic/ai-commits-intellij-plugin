@@ -1,5 +1,6 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs/promises';
+import * as os from 'os';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -21,6 +22,10 @@ interface GitRepositoryLike {
       name?: string;
     };
   };
+}
+
+interface RunGitOptions {
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface RepositoryContext {
@@ -106,12 +111,12 @@ async function getScopedDiff(rootUri: vscode.Uri, settings: Settings, scope: Dif
   if (scope === 'staged') {
     args.push('--staged');
   }
-  args.push('--no-ext-diff', '--no-color', '--', ...includedFiles);
+  args.push('--textconv', '--no-ext-diff', '--no-color', '--', ...includedFiles);
 
   const trackedDiff = includedFiles.length > 0
     ? await runGit(rootUri, args, settings.timeoutSeconds)
     : '';
-  const untrackedDiff = await buildUntrackedDiff(rootUri, untrackedFiles);
+  const untrackedDiff = await buildUntrackedDiff(rootUri, untrackedFiles, settings.timeoutSeconds);
   const diff = [trackedDiff.trim(), untrackedDiff.trim()].filter(Boolean).join('\n\n');
 
   return diff.trim() ? `Repository: ${rootUri.fsPath}\n${diff}` : '';
@@ -223,9 +228,101 @@ async function getUntrackedFiles(rootUri: vscode.Uri, timeoutSeconds: number): P
     .filter(Boolean);
 }
 
-async function buildUntrackedDiff(rootUri: vscode.Uri, files: string[]): Promise<string> {
-  const patches = await Promise.all(files.map((file) => buildUntrackedFilePatch(rootUri, file)));
-  return patches.filter(Boolean).join('\n');
+async function buildUntrackedDiff(rootUri: vscode.Uri, files: string[], timeoutSeconds: number): Promise<string> {
+  if (files.length === 0) {
+    return '';
+  }
+
+  let textconvDiff = '';
+  let textconvFileSet = new Set<string>();
+
+  try {
+    const textconvFiles = await getTextconvEnabledFiles(rootUri, files, timeoutSeconds);
+    if (textconvFiles.length > 0) {
+      const diff = await buildUntrackedDiffWithTextconv(rootUri, textconvFiles, timeoutSeconds);
+      if (diff.trim()) {
+        textconvDiff = diff;
+        textconvFileSet = new Set(textconvFiles);
+      }
+    }
+  } catch {
+    // Fall back to the built-in patch construction if the temporary index or
+    // a configured textconv command fails.
+  }
+
+  const fallbackFiles = files.filter((file) => !textconvFileSet.has(file));
+  const patches = await Promise.all(fallbackFiles.map((file) => buildUntrackedFilePatch(rootUri, file)));
+  const fallbackDiff = patches.filter(Boolean).join('\n');
+  return [textconvDiff.trim(), fallbackDiff.trim()].filter(Boolean).join('\n\n');
+}
+
+async function getTextconvEnabledFiles(rootUri: vscode.Uri, files: string[], timeoutSeconds: number): Promise<string[]> {
+  const output = await runGit(rootUri, ['check-attr', '-z', 'diff', '--', ...files], timeoutSeconds);
+  const fields = output.split('\0');
+  const diffDriversByFile = new Map<string, string>();
+
+  for (let index = 0; index + 2 < fields.length; index += 3) {
+    const file = fields[index];
+    const attribute = fields[index + 1];
+    const diffDriver = fields[index + 2];
+
+    if (attribute === 'diff' && isNamedDiffDriver(diffDriver)) {
+      diffDriversByFile.set(file, diffDriver);
+    }
+  }
+
+  const uniqueDrivers = Array.from(new Set(diffDriversByFile.values()));
+  const driverChecks = await Promise.all(uniqueDrivers.map(async (driver) => ({
+    driver,
+    hasTextconv: await hasTextconvDriver(rootUri, driver, timeoutSeconds)
+  })));
+  const textconvDrivers = new Set(driverChecks.filter((check) => check.hasTextconv).map((check) => check.driver));
+
+  return files.filter((file) => {
+    const driver = diffDriversByFile.get(file);
+    return driver ? textconvDrivers.has(driver) : false;
+  });
+}
+
+async function hasTextconvDriver(rootUri: vscode.Uri, driver: string, timeoutSeconds: number): Promise<boolean> {
+  try {
+    const textconv = await runGit(rootUri, ['config', '--get', `diff.${driver}.textconv`], timeoutSeconds);
+    return textconv.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function buildUntrackedDiffWithTextconv(rootUri: vscode.Uri, files: string[], timeoutSeconds: number): Promise<string> {
+  const tempIndexDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-commits-index-'));
+  const tempIndexPath = path.join(tempIndexDir, 'index');
+  const env = {
+    GIT_INDEX_FILE: tempIndexPath
+  };
+
+  try {
+    await copyRepositoryIndex(rootUri, tempIndexPath, timeoutSeconds);
+    await runGit(rootUri, ['add', '--intent-to-add', '--', ...files], timeoutSeconds, { env });
+    return await runGit(rootUri, ['diff', '--textconv', '--no-ext-diff', '--no-color', '--', ...files], timeoutSeconds, { env });
+  } finally {
+    await fs.rm(tempIndexDir, {
+      recursive: true,
+      force: true
+    });
+  }
+}
+
+async function copyRepositoryIndex(rootUri: vscode.Uri, tempIndexPath: string, timeoutSeconds: number): Promise<void> {
+  try {
+    const indexPath = (await runGit(rootUri, ['rev-parse', '--git-path', 'index'], timeoutSeconds)).trim();
+    if (!indexPath) {
+      return;
+    }
+
+    await fs.copyFile(resolveGitPath(rootUri, indexPath), tempIndexPath);
+  } catch {
+    // Repositories without an index can still use the temporary index.
+  }
 }
 
 async function buildUntrackedFilePatch(rootUri: vscode.Uri, file: string): Promise<string> {
@@ -290,10 +387,11 @@ function isBinary(content: Buffer): boolean {
   return content.subarray(0, Math.min(content.length, 8000)).includes(0);
 }
 
-async function runGit(rootUri: vscode.Uri, args: string[], timeoutSeconds: number): Promise<string> {
+async function runGit(rootUri: vscode.Uri, args: string[], timeoutSeconds: number, options: RunGitOptions = {}): Promise<string> {
   const { stdout } = await execFileAsync('git', args, {
     cwd: rootUri.fsPath,
     encoding: 'utf8',
+    env: options.env ? { ...process.env, ...options.env } : undefined,
     maxBuffer: gitMaxBuffer,
     timeout: timeoutSeconds * 1000,
     windowsHide: true
@@ -328,6 +426,14 @@ function matchesGlob(filePath: string, pattern: string): boolean {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/');
+}
+
+function isNamedDiffDriver(value: string): boolean {
+  return value !== '' && value !== 'set' && value !== 'unset' && value !== 'unspecified';
+}
+
+function resolveGitPath(rootUri: vscode.Uri, value: string): string {
+  return path.isAbsolute(value) ? value : path.join(rootUri.fsPath, value);
 }
 
 function globToRegExp(glob: string): RegExp {

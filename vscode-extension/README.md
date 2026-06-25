@@ -11,6 +11,7 @@ Generate Git commit messages from diffs with LLMs. This is a VS Code port of the
 - Use the same prompt variables as the IntelliJ plugin: `{locale}`, `{diff}`, `{branch}`, `{hint}`, `{previousCommitMessages}`, `{taskId}`, `{taskSummary}`, `{taskDescription}`, and `{taskTimeSpent}`.
 - Store API keys in VS Code SecretStorage.
 - Exclude changed files with glob patterns.
+- Include Git `textconv` output for supported non-text files, such as documents converted by a local diff driver.
 
 ## Providers
 
@@ -47,6 +48,26 @@ Use `AI Commits: Generate Commit Message with Hint` to pass extra context into p
 ```
 
 Use `AI Commits: Preview Prompt` to inspect the exact prompt before it is sent.
+
+## Git textconv
+
+AI Commits runs `git diff --textconv`, so Git diff drivers configured on your machine or in the current repository can convert supported non-text files into textual diffs before the prompt is sent to the LLM.
+
+For example, a repository can opt docx files into a `docx` diff driver:
+
+```gitattributes
+*.docx diff=docx
+```
+
+Then define the converter in your global Git config or this repository's local Git config:
+
+```bash
+git config --global diff.docx.textconv "pandoc --to=plain"
+# or, for this repository only:
+git config diff.docx.textconv "pandoc --to=plain"
+```
+
+Use whichever textconv command is installed on your machine. The extension does not bundle document converters; it asks Git to run the configured command and includes Git's textual diff output.
 
 ## Settings
 
