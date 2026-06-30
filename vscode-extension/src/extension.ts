@@ -1,21 +1,33 @@
 import * as vscode from 'vscode';
 import { getClientSecretKey, getSecretKey, getSettings, providerLabels, providers, Provider } from './config';
-import { getBranch, getCommitInputValue, getDiff, getPreviousCommitMessages, pickRepository, RepositoryContext, setCommitInput, updateCommitInput } from './git';
+import {
+  getBranch,
+  getCommitInputValue,
+  getDiff,
+  getPreviousCommitMessages,
+  getRepositoryContext,
+  getRepositoryContextKey,
+  getRepositoryContextKeyFromCommandArg,
+  pickRepository,
+  RepositoryContext,
+  setCommitInput,
+  updateCommitInput
+} from './git';
 import { cleanupGeneratedMessage, constructPrompt } from './prompt';
 import { createProvider } from './llm/providers';
 import { openSettingsPage } from './settingsWebview';
 
 const outputChannel = vscode.window.createOutputChannel('AI Commits');
-let currentGeneration: vscode.CancellationTokenSource | undefined;
+const currentGenerations = new Map<string, vscode.CancellationTokenSource>();
 type HintMode = 'auto' | 'prompt';
 
 export function activate(context: vscode.ExtensionContext): void {
-  void setGeneratingContext(false);
+  void updateGeneratingContexts();
   context.subscriptions.push(
     outputChannel,
-    vscode.commands.registerCommand('aiCommits.generate', () => generateCommitMessage(context, 'auto')),
-    vscode.commands.registerCommand('aiCommits.generateWithHint', () => generateCommitMessage(context, 'prompt')),
-    vscode.commands.registerCommand('aiCommits.cancelGeneration', () => cancelCurrentGeneration()),
+    vscode.commands.registerCommand('aiCommits.generate', (commandArg?: unknown) => generateCommitMessage(context, 'auto', commandArg)),
+    vscode.commands.registerCommand('aiCommits.generateWithHint', (commandArg?: unknown) => generateCommitMessage(context, 'prompt', commandArg)),
+    vscode.commands.registerCommand('aiCommits.cancelGeneration', (commandArg?: unknown) => cancelGeneration(commandArg)),
     vscode.commands.registerCommand('aiCommits.previewPrompt', () => previewPrompt()),
     vscode.commands.registerCommand('aiCommits.setApiKey', () => setApiKey(context)),
     vscode.commands.registerCommand('aiCommits.clearApiKey', () => clearApiKey(context)),
@@ -25,18 +37,19 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  cancelCurrentGeneration();
+  cancelAllGenerations();
 }
 
-async function generateCommitMessage(context: vscode.ExtensionContext, hintMode: HintMode): Promise<void> {
-  if (currentGeneration) {
-    cancelCurrentGeneration();
+async function generateCommitMessage(context: vscode.ExtensionContext, hintMode: HintMode, commandArg?: unknown): Promise<void> {
+  const settings = getSettings();
+  const repositoryContext = await getRepositoryContext(commandArg);
+  if (!repositoryContext) {
     return;
   }
 
-  const settings = getSettings();
-  const repositoryContext = await pickRepository();
-  if (!repositoryContext) {
+  const repositoryKey = getRepositoryContextKey(repositoryContext);
+  if (currentGenerations.has(repositoryKey)) {
+    currentGenerations.get(repositoryKey)?.cancel();
     return;
   }
 
@@ -46,8 +59,8 @@ async function generateCommitMessage(context: vscode.ExtensionContext, hintMode:
   }
 
   const generationSource = new vscode.CancellationTokenSource();
-  currentGeneration = generationSource;
-  await setGeneratingContext(true);
+  currentGenerations.set(repositoryKey, generationSource);
+  await updateGeneratingContexts();
 
   try {
     const prompt = await preparePrompt(repositoryContext, hint);
@@ -159,10 +172,10 @@ async function generateCommitMessage(context: vscode.ExtensionContext, hintMode:
     void vscode.window.showErrorMessage(`AI Commits failed: ${errorMessage(error)}`);
   } finally {
     generationSource.dispose();
-    if (currentGeneration === generationSource) {
-      currentGeneration = undefined;
+    if (currentGenerations.get(repositoryKey) === generationSource) {
+      currentGenerations.delete(repositoryKey);
     }
-    await setGeneratingContext(false);
+    await updateGeneratingContexts();
   }
 }
 
@@ -180,12 +193,27 @@ async function resolveHint(repositoryContext: RepositoryContext, hintMode: HintM
   }
 }
 
-function cancelCurrentGeneration(): void {
-  currentGeneration?.cancel();
+function cancelGeneration(commandArg?: unknown): void {
+  const repositoryKey = getRepositoryContextKeyFromCommandArg(commandArg);
+  if (repositoryKey) {
+    currentGenerations.get(repositoryKey)?.cancel();
+    return;
+  }
+
+  cancelAllGenerations();
 }
 
-async function setGeneratingContext(isGenerating: boolean): Promise<void> {
-  await vscode.commands.executeCommand('setContext', 'aiCommits.generating', isGenerating);
+function cancelAllGenerations(): void {
+  for (const generation of currentGenerations.values()) {
+    generation.cancel();
+  }
+}
+
+async function updateGeneratingContexts(): Promise<void> {
+  await Promise.all([
+    vscode.commands.executeCommand('setContext', 'aiCommits.generating', currentGenerations.size > 0),
+    vscode.commands.executeCommand('setContext', 'aiCommits.generatingRepositoryRoots', Array.from(currentGenerations.keys()))
+  ]);
 }
 
 async function previewPrompt(): Promise<void> {

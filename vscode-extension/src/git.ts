@@ -24,12 +24,20 @@ interface GitRepositoryLike {
   };
 }
 
+interface SourceControlLike {
+  rootUri?: vscode.Uri;
+  inputBox?: {
+    value: string;
+  };
+}
+
 interface RunGitOptions {
   env?: NodeJS.ProcessEnv;
 }
 
 export interface RepositoryContext {
   rootUri: vscode.Uri;
+  contextKey: string;
   repository?: GitRepositoryLike;
 }
 
@@ -79,6 +87,24 @@ export async function pickRepository(): Promise<RepositoryContext | undefined> {
   });
 
   return picked ? createRepositoryContext(picked.uri) : undefined;
+}
+
+export async function getRepositoryContext(commandArg?: unknown): Promise<RepositoryContext | undefined> {
+  const sourceControl = asSourceControlLike(commandArg);
+  if (sourceControl?.rootUri) {
+    const repository = await findRepository(sourceControl.rootUri);
+    return createRepositoryContext(sourceControl.rootUri, repository ?? asGitRepositoryLike(sourceControl), sourceControl.rootUri.toString());
+  }
+
+  return pickRepository();
+}
+
+export function getRepositoryContextKey(context: RepositoryContext): string {
+  return context.contextKey;
+}
+
+export function getRepositoryContextKeyFromCommandArg(commandArg?: unknown): string | undefined {
+  return asSourceControlLike(commandArg)?.rootUri?.toString();
 }
 
 export async function getDiff(rootUri: vscode.Uri, settings: Settings): Promise<string> {
@@ -223,11 +249,72 @@ async function getGitRepositories(): Promise<GitRepositoryLike[]> {
   return Array.isArray(api?.repositories) ? api.repositories : [];
 }
 
-async function createRepositoryContext(rootUri: vscode.Uri, repository?: GitRepositoryLike): Promise<RepositoryContext> {
+async function findRepository(rootUri: vscode.Uri): Promise<GitRepositoryLike | undefined> {
+  const repositories = await getGitRepositories();
+  const rootKey = rootUri.toString();
+  return repositories.find((repository) => repository.rootUri.toString() === rootKey);
+}
+
+async function createRepositoryContext(rootUri: vscode.Uri, repository?: GitRepositoryLike, contextKey = rootUri.toString()): Promise<RepositoryContext> {
   return {
     rootUri: await resolveRepositoryRoot(rootUri),
+    contextKey,
     repository
   };
+}
+
+function asSourceControlLike(value: unknown): SourceControlLike | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as {
+    rootUri?: unknown;
+    inputBox?: unknown;
+  };
+
+  if (!isUri(candidate.rootUri)) {
+    return undefined;
+  }
+
+  return {
+    rootUri: candidate.rootUri,
+    inputBox: asInputBox(candidate.inputBox)
+  };
+}
+
+function asGitRepositoryLike(value: SourceControlLike): GitRepositoryLike | undefined {
+  if (!value.rootUri) {
+    return undefined;
+  }
+
+  return {
+    rootUri: value.rootUri,
+    inputBox: value.inputBox
+  };
+}
+
+function asInputBox(value: unknown): { value: string } | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as {
+    value?: unknown;
+  };
+
+  return typeof candidate.value === 'string'
+    ? candidate as { value: string }
+    : undefined;
+}
+
+function isUri(value: unknown): value is vscode.Uri {
+  return value instanceof vscode.Uri || (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as vscode.Uri).toString === 'function' &&
+    typeof (value as vscode.Uri).fsPath === 'string'
+  );
 }
 
 async function resolveRepositoryRoot(rootUri: vscode.Uri): Promise<vscode.Uri> {
